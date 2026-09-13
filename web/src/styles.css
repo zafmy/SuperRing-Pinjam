@@ -17,7 +17,7 @@ body {
     #f3f6ef;
 }
 
-button, input { font: inherit; }
+button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 
 .app-shell {
@@ -81,8 +81,10 @@ p { color: #476056; line-height: 1.55; }
 .form-panel h1 { font-size: clamp(2.1rem, 7vw, 3.5rem); }
 form { margin-top: 1.65rem; }
 label { display: block; margin: 1.1rem 0 .42rem; color: #244535; font-size: .88rem; font-weight: 750; }
-input { width: 100%; min-height: 3.25rem; border: 1px solid #aebcaf; border-radius: .7rem; padding: .72rem .85rem; color: #183027; background: #fffef9; }
-input:focus { outline: 3px solid rgba(46, 139, 87, .26); border-color: #28764b; }
+input, select, textarea { width: 100%; border: 1px solid #aebcaf; border-radius: .7rem; padding: .72rem .85rem; color: #183027; background: #fffef9; }
+input, select { min-height: 3.25rem; }
+textarea { min-height: 6.75rem; resize: vertical; line-height: 1.45; }
+input:focus, select:focus, textarea:focus { outline: 3px solid rgba(46, 139, 87, .26); border-color: #28764b; }
 form .primary-button { margin-top: 1.5rem; }
 .error, .warning { margin: 1rem 0 0; border-radius: .7rem; padding: .72rem .85rem; color: #8a251d; background: #fee9e5; font-size: .92rem; }
 .fine-print { margin: 1.2rem 0 0; color: #64766b; font-size: .8rem; }
@@ -124,6 +126,36 @@ form .primary-button { margin-top: 1.5rem; }
 .muted { color: #6d8175; }
 .session-footer { display: flex; justify-content: space-between; gap: 1rem; margin-top: 1.5rem; color: #65776d; font-size: .8rem; }
 
+.mission-status { display: inline-block; margin-bottom: .7rem; border-radius: 1rem; padding: .22rem .6rem; color: #296443; background: #e3f1e5; font-size: .78rem; font-weight: 750; text-transform: capitalize; }
+.requirement-list { margin: .7rem 0 0; padding-left: 1.1rem; color: #506a5b; font-size: .88rem; }
+.requirement-list li + li { margin-top: .24rem; }
+
+.request-composer form { margin-top: .7rem; }
+.request-composer form .primary-button, .request-card .primary-button { margin-top: 1rem; }
+.request-summary { margin: 1.1rem 0 0; padding: 0; list-style: none; }
+.request-summary li { display: flex; justify-content: space-between; gap: .75rem; padding: .65rem 0; border-top: 1px solid #dce5da; color: #526b5b; font-size: .82rem; }
+.request-summary strong { flex: none; color: #236441; font-size: .76rem; }
+
+.request-inbox { margin-bottom: 1rem; border: 1px solid rgba(24, 48, 39, .13); border-radius: 1.25rem; padding: 1.3rem; background: rgba(222, 241, 226, .7); box-shadow: 0 1.4rem 3.4rem rgba(30, 53, 38, .06); }
+.request-inbox > h2 { margin-bottom: .4rem; }
+.answer-stack { display: grid; gap: .85rem; margin-top: 1rem; }
+.request-card { border: 1px solid #b8d5c0; border-radius: .95rem; padding: 1rem; background: #fffef9; }
+.request-card h3 { margin: .6rem 0 0; color: #234734; font-size: 1.02rem; line-height: 1.35; }
+.request-card form { margin-top: .8rem; }
+.request-card .fine-print { margin-top: .55rem; }
+.request-card-heading { display: flex; align-items: center; justify-content: space-between; gap: .75rem; color: #708276; font-size: .76rem; }
+.kind-badge { border-radius: 1rem; padding: .24rem .5rem; color: #276a46; background: #e0f0e2; font-size: .68rem; font-weight: 850; letter-spacing: .08em; }
+.file-input { padding: .6rem; background: #f7fbf6; font-size: .85rem; }
+
+.evidence-card { grid-column: 1 / -1; }
+.evidence-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .85rem; margin-top: 1rem; }
+.evidence-item { overflow: hidden; border: 1px solid #d8e4d8; border-radius: .9rem; background: #fcfdf9; }
+.evidence-item > p:not(.fine-print) { margin: .8rem .9rem 0; color: #385445; font-size: .9rem; white-space: pre-wrap; }
+.evidence-meta { display: flex; flex-direction: column; gap: .18rem; padding: .85rem .9rem; border-bottom: 1px solid #e1e9df; color: #3e5b4a; font-size: .85rem; }
+.evidence-meta span { color: #718278; font-size: .75rem; }
+.evidence-item .fine-print { margin: .8rem .9rem .9rem; }
+.evidence-image { display: block; width: calc(100% - 1.8rem); max-height: 22rem; margin: .8rem .9rem 0; border-radius: .55rem; object-fit: cover; background: #e6ece3; }
+
 @media (max-width: 620px) {
   .app-shell, .app-shell-wide { width: min(100% - 1.25rem, 1060px); padding-top: 2rem; }
   .choice-grid, .dashboard-grid { grid-template-columns: 1fr; }
@@ -134,5 +166,6 @@ form .primary-button { margin-top: 1.5rem; }
   .sync-state { margin-bottom: 0; }
   .invite-card { grid-template-columns: 1fr; }
   .participants-card, .activity-card { grid-row: auto; grid-column: auto; }
+  .evidence-card { grid-column: auto; }
   .session-footer { align-items: start; flex-direction: column; }
 }

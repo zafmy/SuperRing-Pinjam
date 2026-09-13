@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
-import type { Participant, SessionEvent, SessionView } from '../../shared/contracts';
+import type { Observation, ObservationRequest, Participant, SessionEvent, SessionView } from '../../shared/contracts';
 import { api, ApiError } from './api';
 
 type Role = 'host' | 'participant';
@@ -15,6 +15,12 @@ type Screen = 'home' | 'host' | 'join' | 'session';
 
 const savedSessionsKey = 'pinjam.saved-sessions.v1';
 const activeSessionKey = 'pinjam.active-session.v1';
+const maxImageBytes = 5 * 1024 * 1024;
+const supportedImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+function newIdempotencyKey() {
+  return window.crypto.randomUUID();
+}
 
 function invitedCode() {
   const match = window.location.pathname.match(/^\/join\/([^/]+)\/?$/);
@@ -301,6 +307,7 @@ export default function App() {
             connection={connection}
             credential={credential}
             leaveThisDevice={leaveThisDevice}
+            onSession={setSession}
             session={session}
             storageWarning={storageWarning}
           />
@@ -343,12 +350,14 @@ function SessionDashboard({
   connection,
   credential,
   leaveThisDevice,
+  onSession,
   session,
   storageWarning,
 }: {
   connection: string;
   credential: SavedSession;
   leaveThisDevice: () => void;
+  onSession: (session: SessionView) => void;
   session: SessionView;
   storageWarning: boolean;
 }) {
@@ -388,6 +397,16 @@ function SessionDashboard({
         </section>
       )}
 
+      {!isHost && (
+        <RequestInbox
+          code={session.code}
+          participantId={credential.participantId}
+          requests={session.requests}
+          token={credential.token}
+          onSession={onSession}
+        />
+      )}
+
       <div className="dashboard-grid">
         <section className="dashboard-card participants-card">
           <div className="card-heading">
@@ -417,10 +436,40 @@ function SessionDashboard({
 
         <section className="dashboard-card">
           <p className="eyebrow">STATUS MISI</p>
-          <h2>Menunggu arahan sebenar</h2>
-          <p className="empty-state">Belum ada permintaan gambar, pemerhatian atau tugasan. Agent dan pengesahan visual belum dikonfigurasikan untuk sesi ini.</p>
-          <p className="fine-print">Jangan anggap barang telah diperiksa atau kerja selesai tanpa bukti sebenar.</p>
+          {session.mission ? (
+            <>
+              <h2>{session.mission.goal}</h2>
+              <p className="mission-status">Status: {session.mission.status}</p>
+              <ul className="requirement-list">
+                {session.mission.requirements.map((requirement) => <li key={requirement.id}>{requirement.quantity} × {requirement.label}</li>)}
+              </ul>
+            </>
+          ) : (
+            <>
+              <h2>Belum ada misi</h2>
+              <p className="empty-state">Penyelaras masih boleh menghantar permintaan gambar atau soalan untuk mengumpul bukti sebenar.</p>
+            </>
+          )}
+          <p className="fine-print">Bukti yang diterima belum disemak AI dan tidak mengesahkan kerja telah selesai.</p>
         </section>
+
+        {isHost && (
+          <RequestComposer
+            code={session.code}
+            participants={session.participants}
+            requests={session.requests}
+            token={credential.token}
+            onSession={onSession}
+          />
+        )}
+
+        <EvidenceList
+          code={session.code}
+          observations={session.observations}
+          participants={session.participants}
+          requests={session.requests}
+          token={credential.token}
+        />
 
         <section className="dashboard-card activity-card">
           <p className="eyebrow">AKTIVITI RUANG</p>
@@ -435,4 +484,296 @@ function SessionDashboard({
       </footer>
     </>
   );
+}
+
+function RequestComposer({
+  code,
+  participants,
+  requests,
+  token,
+  onSession,
+}: {
+  code: string;
+  participants: Participant[];
+  requests: ObservationRequest[];
+  token: string;
+  onSession: (session: SessionView) => void;
+}) {
+  const [participantId, setParticipantId] = useState('');
+  const [kind, setKind] = useState<ObservationRequest['kind']>('photo');
+  const [prompt, setPrompt] = useState('');
+  const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!participants.some((participant) => participant.id === participantId)) {
+      setParticipantId(participants[0]?.id ?? '');
+    }
+  }, [participantId, participants]);
+
+  const changeRequest = () => {
+    setError('');
+    setIdempotencyKey(newIdempotencyKey());
+  };
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!participantId || !prompt.trim()) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const result = await api.createRequest(code, token, idempotencyKey, {
+        participantId,
+        kind,
+        prompt: prompt.trim(),
+      });
+      onSession(result.session);
+      setPrompt('');
+      setIdempotencyKey(newIdempotencyKey());
+    } catch (requestError: unknown) {
+      setError(describeError(requestError));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <section className="dashboard-card request-composer">
+      <p className="eyebrow">PERMINTAAN PENYELARAS</p>
+      <h2>Minta pandangan peserta</h2>
+      {participants.length === 0 ? (
+        <p className="empty-state">Tunggu sekurang-kurangnya seorang peserta menyertai sesi sebelum menghantar permintaan.</p>
+      ) : (
+        <form onSubmit={submit}>
+          <label htmlFor="request-participant">Hantar kepada</label>
+          <select id="request-participant" value={participantId} onChange={(event) => { setParticipantId(event.target.value); changeRequest(); }}>
+            {participants.map((participant) => <option key={participant.id} value={participant.id}>{participantLabel(participant)}</option>)}
+          </select>
+          <label htmlFor="request-kind">Jenis permintaan</label>
+          <select id="request-kind" value={kind} onChange={(event) => { setKind(event.target.value as ObservationRequest['kind']); changeRequest(); }}>
+            <option value="photo">Gambar</option>
+            <option value="question">Soalan</option>
+          </select>
+          <label htmlFor="request-prompt">Arahan jelas</label>
+          <textarea id="request-prompt" value={prompt} onChange={(event) => { setPrompt(event.target.value); changeRequest(); }} placeholder={kind === 'photo' ? 'Contoh: Ambil gambar sudut kiri meja.' : 'Contoh: Berapa buah pen yang anda nampak?'} maxLength={2000} required />
+          {error && <p className="error" role="alert">{error}</p>}
+          <button className="primary-button" disabled={submitting || !participantId || !prompt.trim()} type="submit">
+            {submitting ? 'Menghantar…' : 'Hantar permintaan'}
+          </button>
+        </form>
+      )}
+      {requests.length > 0 && (
+        <ul className="request-summary">
+          {requests.slice(-3).reverse().map((request) => {
+            const participant = participants.find((entry) => entry.id === request.participantId);
+            return <li key={request.id}><span>{request.kind === 'photo' ? 'Gambar' : 'Soalan'} · {participant?.name ?? 'Peserta'}</span><strong>{request.status === 'answered' ? 'Dijawab' : 'Menunggu'}</strong></li>;
+          })}
+        </ul>
+      )}
+      <p className="fine-print">Permintaan ini dihantar oleh penyelaras, bukan oleh agent automatik.</p>
+    </section>
+  );
+}
+
+function RequestInbox({
+  code,
+  participantId,
+  requests,
+  token,
+  onSession,
+}: {
+  code: string;
+  participantId: string | undefined;
+  requests: ObservationRequest[];
+  token: string;
+  onSession: (session: SessionView) => void;
+}) {
+  const pending = requests.filter((request) => request.participantId === participantId && request.status === 'pending');
+  return (
+    <section className="request-inbox">
+      <p className="eyebrow">TINDAKAN ANDA</p>
+      <h2>{pending.length > 0 ? `${pending.length} permintaan menunggu` : 'Tiada permintaan baharu'}</h2>
+      {pending.length === 0 ? (
+        <p className="empty-state">Apabila penyelaras meminta gambar atau jawapan, tindakan akan muncul di sini.</p>
+      ) : (
+        <div className="answer-stack">
+          {pending.map((request) => <ParticipantRequestCard key={request.id} code={code} request={request} token={token} onSession={onSession} />)}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ParticipantRequestCard({
+  code,
+  request,
+  token,
+  onSession,
+}: {
+  code: string;
+  request: ObservationRequest;
+  token: string;
+  onSession: (session: SessionView) => void;
+}) {
+  const isPhoto = request.kind === 'photo';
+  const [text, setText] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [mediaId, setMediaId] = useState<string | null>(null);
+  const [uploadKey, setUploadKey] = useState(newIdempotencyKey);
+  const [observationKey, setObservationKey] = useState(newIdempotencyKey);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const validImage = !file || (supportedImageTypes.has(file.type) && file.size <= maxImageBytes);
+  const canSubmit = isPhoto ? Boolean(mediaId || (file && validImage)) : Boolean(text.trim());
+
+  const changeText = (value: string) => {
+    setText(value);
+    setObservationKey(newIdempotencyKey());
+    setError('');
+  };
+
+  const chooseFile = (nextFile: File | null) => {
+    setFile(nextFile);
+    setMediaId(null);
+    setUploadKey(newIdempotencyKey());
+    setObservationKey(newIdempotencyKey());
+    if (nextFile && !supportedImageTypes.has(nextFile.type)) {
+      setError('Pilih fail JPEG, PNG atau WebP.');
+    } else if (nextFile && nextFile.size > maxImageBytes) {
+      setError('Saiz gambar mestilah 5 MiB atau kurang.');
+    } else {
+      setError('');
+    }
+  };
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      let attachedMediaId = mediaId;
+      if (isPhoto && !attachedMediaId) {
+        if (!file) throw new Error('Pilih gambar untuk dihantar.');
+        const upload = await api.uploadMedia(code, token, uploadKey, file);
+        attachedMediaId = upload.mediaId;
+        setMediaId(attachedMediaId);
+      }
+      const result = await api.submitObservation(code, token, observationKey, {
+        requestId: request.id,
+        text: text.trim(),
+        mediaId: isPhoto ? attachedMediaId : null,
+      });
+      onSession(result.session);
+    } catch (submissionError: unknown) {
+      setError(describeError(submissionError));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <article className="request-card">
+      <div className="request-card-heading">
+        <span className="kind-badge">{isPhoto ? 'GAMBAR' : 'SOALAN'}</span>
+        <span>{relativeTime(request.createdAt)}</span>
+      </div>
+      <h3>{request.prompt}</h3>
+      <form onSubmit={submit}>
+        {isPhoto && (
+          <>
+            <label htmlFor={`image-${request.id}`}>Pilih satu gambar</label>
+            <input id={`image-${request.id}`} className="file-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => chooseFile(event.target.files?.[0] ?? null)} />
+            <p className="fine-print">JPEG, PNG atau WebP sahaja, maksimum 5 MiB. Gambar menjadi bukti dihantar, bukan pengesahan AI.</p>
+          </>
+        )}
+        <label htmlFor={`answer-${request.id}`}>{isPhoto ? 'Nota (pilihan)' : 'Jawapan anda'}</label>
+        <textarea id={`answer-${request.id}`} value={text} onChange={(event) => changeText(event.target.value)} placeholder={isPhoto ? 'Terangkan apa yang kelihatan, jika membantu.' : 'Taip jawapan yang anda lihat.'} maxLength={2000} required={!isPhoto} />
+        {error && <p className="error" role="alert">{error}</p>}
+        <button className="primary-button" disabled={submitting || !canSubmit} type="submit">
+          {submitting ? (isPhoto && !mediaId ? 'Memuat naik…' : 'Menghantar…') : isPhoto ? 'Hantar gambar' : 'Hantar jawapan'}
+        </button>
+      </form>
+    </article>
+  );
+}
+
+function EvidenceList({
+  code,
+  observations,
+  participants,
+  requests,
+  token,
+}: {
+  code: string;
+  observations: Observation[];
+  participants: Participant[];
+  requests: ObservationRequest[];
+  token: string;
+}) {
+  return (
+    <section className="dashboard-card evidence-card">
+      <p className="eyebrow">BUKTI DITERIMA</p>
+      <h2>Pemerhatian daripada ruang</h2>
+      {observations.length === 0 ? (
+        <p className="empty-state">Jawapan dan gambar peserta akan kelihatan di sini selepas diterima oleh sesi.</p>
+      ) : (
+        <div className="evidence-list">
+          {observations.slice().reverse().map((observation) => {
+            const participant = participants.find((entry) => entry.id === observation.participantId);
+            const request = requests.find((entry) => entry.id === observation.requestId);
+            return (
+              <article className="evidence-item" key={observation.id}>
+                <div className="evidence-meta">
+                  <strong>{participant?.name ?? 'Peserta'} · {observation.zone}</strong>
+                  <span>{request?.kind === 'photo' ? 'Gambar' : 'Jawapan'} · {relativeTime(observation.receivedAt)}</span>
+                </div>
+                {observation.text && <p>{observation.text}</p>}
+                {observation.mediaId && <EvidenceImage code={code} mediaId={observation.mediaId} token={token} participantName={participant?.name ?? 'peserta'} />}
+                <p className="fine-print">Bukti diterima oleh sesi; ia belum disahkan secara visual atau menandakan misi selesai.</p>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function EvidenceImage({
+  code,
+  mediaId,
+  participantName,
+  token,
+}: {
+  code: string;
+  mediaId: string;
+  participantName: string;
+  token: string;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl: string | null = null;
+    api.getMedia(code, token, mediaId, controller.signal)
+      .then((blob) => {
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      })
+      .catch((imageError: unknown) => {
+        if (!controller.signal.aborted) setError(describeError(imageError));
+      });
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [code, mediaId, token]);
+
+  if (error) return <p className="error" role="status">Gambar tidak dapat dimuat: {error}</p>;
+  if (!url) return <p className="fine-print">Memuatkan bukti gambar…</p>;
+  return <img className="evidence-image" src={url} alt={`Bukti gambar daripada ${participantName}`} />;
 }
