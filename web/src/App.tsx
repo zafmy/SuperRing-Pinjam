@@ -19,7 +19,9 @@ const maxImageBytes = 5 * 1024 * 1024;
 const supportedImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 function newIdempotencyKey() {
-  return window.crypto.randomUUID();
+  // getRandomValues also works on a phone using the laptop's HTTP LAN address.
+  const bytes = window.crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function invitedCode() {
@@ -158,7 +160,7 @@ export default function App() {
       try {
         const result = await api.getSession(credential.code, credential.token, controller.signal);
         if (!disposed) {
-          setSession(result.session);
+          setSession((current) => current && current.id === result.session.id && current.revision > result.session.revision ? current : result.session);
           setConnection('Diselaraskan');
         }
       } catch (error: unknown) {
@@ -307,7 +309,7 @@ export default function App() {
             connection={connection}
             credential={credential}
             leaveThisDevice={leaveThisDevice}
-            onSession={setSession}
+            onSession={(next) => setSession((current) => current && current.id === next.id && current.revision > next.revision ? current : next)}
             session={session}
             storageWarning={storageWarning}
           />
@@ -337,7 +339,7 @@ export default function App() {
           <p className="fine-print">Pautan peserta berbentuk <code>/join/KOD</code>.</p>
         </section>
       </div>
-      <p className="capability-note"><strong>Untuk sekarang:</strong> sesi, jemputan dan status peserta tersedia. Permintaan gambar, tugasan dan semakan AI belum diaktifkan.</p>
+      <p className="capability-note"><strong>Untuk sekarang:</strong> sesi, jemputan, permintaan gambar dan jawapan peserta tersedia. Tugasan dan semakan AI belum diaktifkan.</p>
     </Page>
   );
 }
@@ -547,16 +549,16 @@ function RequestComposer({
       ) : (
         <form onSubmit={submit}>
           <label htmlFor="request-participant">Hantar kepada</label>
-          <select id="request-participant" value={participantId} onChange={(event) => { setParticipantId(event.target.value); changeRequest(); }}>
+          <select disabled={submitting} id="request-participant" value={participantId} onChange={(event) => { setParticipantId(event.target.value); changeRequest(); }}>
             {participants.map((participant) => <option key={participant.id} value={participant.id}>{participantLabel(participant)}</option>)}
           </select>
           <label htmlFor="request-kind">Jenis permintaan</label>
-          <select id="request-kind" value={kind} onChange={(event) => { setKind(event.target.value as ObservationRequest['kind']); changeRequest(); }}>
+          <select disabled={submitting} id="request-kind" value={kind} onChange={(event) => { setKind(event.target.value as ObservationRequest['kind']); changeRequest(); }}>
             <option value="photo">Gambar</option>
             <option value="question">Soalan</option>
           </select>
           <label htmlFor="request-prompt">Arahan jelas</label>
-          <textarea id="request-prompt" value={prompt} onChange={(event) => { setPrompt(event.target.value); changeRequest(); }} placeholder={kind === 'photo' ? 'Contoh: Ambil gambar sudut kiri meja.' : 'Contoh: Berapa buah pen yang anda nampak?'} maxLength={2000} required />
+          <textarea disabled={submitting} id="request-prompt" value={prompt} onChange={(event) => { setPrompt(event.target.value); changeRequest(); }} placeholder={kind === 'photo' ? 'Contoh: Ambil gambar sudut kiri meja.' : 'Contoh: Berapa buah pen yang anda nampak?'} maxLength={2000} required />
           {error && <p className="error" role="alert">{error}</p>}
           <button className="primary-button" disabled={submitting || !participantId || !prompt.trim()} type="submit">
             {submitting ? 'Menghantar…' : 'Hantar permintaan'}
@@ -685,12 +687,12 @@ function ParticipantRequestCard({
         {isPhoto && (
           <>
             <label htmlFor={`image-${request.id}`}>Pilih satu gambar</label>
-            <input id={`image-${request.id}`} className="file-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => chooseFile(event.target.files?.[0] ?? null)} />
+            <input disabled={submitting} id={`image-${request.id}`} className="file-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => chooseFile(event.target.files?.[0] ?? null)} />
             <p className="fine-print">JPEG, PNG atau WebP sahaja, maksimum 5 MiB. Gambar menjadi bukti dihantar, bukan pengesahan AI.</p>
           </>
         )}
         <label htmlFor={`answer-${request.id}`}>{isPhoto ? 'Nota (pilihan)' : 'Jawapan anda'}</label>
-        <textarea id={`answer-${request.id}`} value={text} onChange={(event) => changeText(event.target.value)} placeholder={isPhoto ? 'Terangkan apa yang kelihatan, jika membantu.' : 'Taip jawapan yang anda lihat.'} maxLength={2000} required={!isPhoto} />
+        <textarea disabled={submitting} id={`answer-${request.id}`} value={text} onChange={(event) => changeText(event.target.value)} placeholder={isPhoto ? 'Terangkan apa yang kelihatan, jika membantu.' : 'Taip jawapan yang anda lihat.'} maxLength={2000} required={!isPhoto} />
         {error && <p className="error" role="alert">{error}</p>}
         <button className="primary-button" disabled={submitting || !canSubmit} type="submit">
           {submitting ? (isPhoto && !mediaId ? 'Memuat naik…' : 'Menghantar…') : isPhoto ? 'Hantar gambar' : 'Hantar jawapan'}

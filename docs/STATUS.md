@@ -13,6 +13,13 @@
 - Browser smoke check: create/join and host-issued question → participant answer → shared evidence passed locally on 13 September 2026. Both roles recovered their authenticated view after reload, and the host dashboard was visually inspected at desktop size. The browser image-picker flow was not manually exercised; the server photo workflow is covered by integration tests. Production server startup succeeded.
 - Phone test: not yet performed on physical phones.
 
+## Integration checkpoint
+
+- Frontend PR #2 merged after local checks passed: typecheck, all 11 API tests and production build.
+- Integration fixes: request IDs use Web Crypto getRandomValues for HTTP LAN phone access; older polling responses cannot replace newer session revisions; request and answer fields are locked while submitting to avoid mixing file/text retries.
+- Homepage capability copy and README now reflect the implemented evidence UI.
+- Physical-phone image picking/upload and real model calls still need verification. No local .env file was present at this checkpoint.
+
 ## Next owners
 
 - Frontend: create/join and real photo/question UI flows are complete. Test camera/image upload on the physical phones before the demo; then integrate later task UI only after its contract is available.
