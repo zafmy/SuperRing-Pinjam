@@ -1,4 +1,4 @@
-# Current checkpoint: mission and CommandCode agent API
+# Current checkpoint: integrated mission and agent UI
 
 - Implemented: host-confirmed mission API; CommandCode Chat Completions adapter using gpt-5.5 by default; one explicit host-triggered step with text/images and one validated tool call.
 - Actions: photo/question request, voluntary task offer, task verification, mission completion, wait. Participant actions: accept, decline, start, report_done. A reported task is not completed until the agent verifies fresh photo evidence.
@@ -8,6 +8,13 @@
 - Frontend: host mission confirmation, one-click agent controls, real configuration/error states and participant task controls are implemented with shared contract types and persisted retry keys. Existing session/evidence UI is preserved.
 - Browser smoke check: host confirmed a real mission with three requirements; after a participant joined, the host correctly showed the server's “AI not configured” state and disabled the agent step. Task transitions and a successful live model step could not be manually exercised because no provider key was configured.
 - Execution model: one host click = one model decision. There is no automatic background worker; health configured only indicates local configuration.
+
+## Frontend integration review
+
+- PR #7 reviewed and merged; mission, agent step and participant response payloads match API v0.3. Local typecheck, all 15 tests and production build passed; PR source/container CI passed.
+- Fixed stale “agent not started” text after a successful step; restore the latest model summary from persisted events after reload. Activity now shows the newest five events.
+- Pending step keys now also survive in memory if sessionStorage is unavailable. Evidence copy no longer incorrectly states that all evidence is unreviewed after completion.
+- Review covered code and automated checks. This integration review did not exercise a live model or a physical-phone/browser flow.
 
 ## Earlier checkpoints (historical)
 
@@ -48,6 +55,6 @@
 ## Next owners
 
 - Frontend: create/join, evidence, mission, host agent controls and participant task UI are complete. Test camera/image upload and a full provider-backed two-phone mission before the demo.
-- Backend: real agent loop and task transitions after model credentials are configured.
+- Backend: deploy current main with CommandCode credentials, then verify live vision/tool calls and the shared-phone workflow.
 
 Update this file with actual test results and PR links. Do not describe fixture data as a working agent.
