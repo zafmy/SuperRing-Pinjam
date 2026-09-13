@@ -23,7 +23,7 @@ npm run dev
 
 Open http://localhost:5173. The web server forwards `/api` to the backend on port 3001. No model key is required for the starter.
 
-Optional configuration: copy `.env.example` to `.env`. For normal development keep `PORT=3001`, matching the Vite proxy. Provider credentials are only configured in the backend during the next phase; never put keys in `VITE_*` variables.
+Optional configuration: copy `.env.example` to `.env`. For normal development keep `PORT=3001`, matching the Vite proxy. The upcoming agent will use CommandCode Provider API with OpenAI model `gpt-5.5`. `.env.example` includes the planned CMD_API_KEY, AI_BASE_URL and AI_MODEL settings; the current server does not consume them yet. Configure the real key only on the backend; never put keys in `VITE_*` variables.
 
 ```sh
 npm run check
