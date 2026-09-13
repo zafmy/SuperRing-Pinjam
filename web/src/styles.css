@@ -29,6 +29,10 @@ button { cursor: pointer; }
 
 .app-shell-wide { width: min(100% - 2rem, 1060px); padding-top: clamp(2rem, 5vw, 4rem); }
 
+.language-picker { display: flex; width: fit-content; margin: 0 0 1.4rem auto; padding: .2rem; border: 1px solid rgba(24, 48, 39, .16); border-radius: .65rem; background: rgba(255, 255, 252, .72); }
+.language-picker button { min-width: 3.2rem; border: 0; border-radius: .45rem; padding: .38rem .55rem; color: #456056; background: transparent; font-size: .75rem; font-weight: 800; letter-spacing: .05em; }
+.language-picker .language-active { color: #f7faf3; background: #1b754a; }
+
 .eyebrow {
   margin: 0 0 .55rem;
   color: #376b50;

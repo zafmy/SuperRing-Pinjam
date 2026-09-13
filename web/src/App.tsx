@@ -6,6 +6,7 @@ import type {
 import { api, ApiError } from './api';
 import { AutomationPanel } from './AutomationPanel';
 import { NotificationCenter, removeDevicePush } from './NotificationCenter';
+import { localizePage, readLanguage, saveLanguage, type Language } from './i18n';
 
 type Role = 'host' | 'participant';
 
@@ -146,7 +147,7 @@ function describeError(error: unknown) {
 function relativeTime(timestamp: string) {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return 'baru sahaja';
-  return new Intl.DateTimeFormat('ms-MY', { hour: '2-digit', minute: '2-digit' }).format(date);
+  return new Intl.DateTimeFormat(document.documentElement.lang === 'en' ? 'en-MY' : 'ms-MY', { hour: '2-digit', minute: '2-digit' }).format(date);
 }
 
 function participantLabel(participant: Participant) {
@@ -173,18 +174,31 @@ function Activity({ events }: { events: SessionEvent[] }) {
 export default function App() {
   const routeCode = useMemo(invitedCode, []);
   const initialSaved = useMemo(() => readSavedSession(routeCode), [routeCode]);
+  const [language, setLanguage] = useState<Language>(readLanguage);
   const [screen, setScreen] = useState<Screen>(() => routeCode && !initialSaved ? 'join' : initialSaved ? 'session' : 'home');
   const [credential, setCredential] = useState<SavedSession | null>(() => initialSaved);
   const [session, setSession] = useState<SessionView | null>(null);
   const [connection, setConnection] = useState('');
   const [accessLost, setAccessLost] = useState(false);
   const [storageWarning, setStorageWarning] = useState(false);
-  const [title, setTitle] = useState('Meja workshop');
+  const [title, setTitle] = useState(() => readLanguage() === 'en' ? 'Workshop table' : 'Meja workshop');
   const [name, setName] = useState('');
   const [zone, setZone] = useState('');
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
+
+  useEffect(() => {
+    localizePage(language);
+    const observer = new MutationObserver(() => localizePage(language));
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['aria-label', 'placeholder', 'alt', 'title'] });
+    return () => observer.disconnect();
+  }, [language]);
+
+  const chooseLanguage = (next: Language) => {
+    setLanguage(next);
+    saveLanguage(next);
+  };
 
   useEffect(() => {
     if (!credential) return;
@@ -297,7 +311,7 @@ export default function App() {
 
   if (screen === 'host') {
     return (
-      <Page>
+      <Page language={language} onLanguageChange={chooseLanguage}>
         <button className="text-button" onClick={openHome} type="button">← Kembali</button>
         <section className="form-panel">
           <p className="eyebrow">PENYELARAS</p>
@@ -319,7 +333,7 @@ export default function App() {
 
   if (screen === 'join') {
     return (
-      <Page>
+      <Page language={language} onLanguageChange={chooseLanguage}>
         <button className="text-button" onClick={openHome} type="button">← Kembali</button>
         <section className="form-panel">
           <p className="eyebrow">SERTAI RUANG</p>
@@ -343,7 +357,7 @@ export default function App() {
 
   if (screen === 'session' && credential) {
     return (
-      <Page wide>
+      <Page wide language={language} onLanguageChange={chooseLanguage}>
         {!session || accessLost ? (
           <section className="form-panel loading-panel" aria-live="polite">
             <p className="eyebrow">MEMULIHKAN SESI</p>
@@ -366,7 +380,7 @@ export default function App() {
   }
 
   return (
-    <Page>
+    <Page language={language} onLanguageChange={chooseLanguage}>
       <section className="hero">
         <p className="eyebrow">PINJAM · SUPER RING</p>
         <h1>Satu ruang. Dua pandangan.</h1>
@@ -395,8 +409,14 @@ export default function App() {
   );
 }
 
-function Page({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
-  return <main className={wide ? 'app-shell app-shell-wide' : 'app-shell'}>{children}</main>;
+function Page({ children, wide = false, language, onLanguageChange }: { children: ReactNode; wide?: boolean; language: Language; onLanguageChange: (language: Language) => void }) {
+  return <main className={wide ? 'app-shell app-shell-wide' : 'app-shell'}>
+    <div className="language-picker" role="group" aria-label="Pilih bahasa">
+      <button className={language === 'ms' ? 'language-active' : ''} type="button" aria-pressed={language === 'ms'} onClick={() => onLanguageChange('ms')}>BM</button>
+      <button className={language === 'en' ? 'language-active' : ''} type="button" aria-pressed={language === 'en'} onClick={() => onLanguageChange('en')}>EN</button>
+    </div>
+    {children}
+  </main>;
 }
 
 function SessionDashboard({
