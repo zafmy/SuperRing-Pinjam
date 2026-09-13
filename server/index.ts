@@ -4,11 +4,13 @@ import { resolve } from 'node:path';
 import { createApp } from './app';
 import { commandCodePlanner } from './agent';
 import { SessionStore } from './store';
+import { PushService } from './push';
 
 const port = Number(process.env.PORT ?? 3001);
 const store = new SessionStore(resolve(process.env.DATA_DIR ?? '.data'));
 const planner = commandCodePlanner();
-const app = createApp(store, planner);
+const push = new PushService(store, resolve(process.env.DATA_DIR ?? '.data'), process.env.VAPID_SUBJECT);
+const app = createApp(store, planner, push);
 const webDirectory = resolve('dist/web');
 
 if (existsSync(webDirectory)) {
@@ -17,7 +19,8 @@ if (existsSync(webDirectory)) {
 }
 
 const server = app.listen(port, '0.0.0.0', () => {
-  console.log(`PINJAM server is ready on port ${port}. Agent: ${planner ? 'CommandCode configured; awaiting host step' : 'not configured (CMD_API_KEY missing)'}.`);
+  console.log(`PINJAM server is ready on port ${port}. Agent: ${planner ? 'CommandCode configured; manual and automatic controls ready' : 'not configured (CMD_API_KEY missing)'}.`);
 });
-process.on('SIGTERM', () => server.close());
-process.on('SIGINT', () => server.close());
+const shutdown = () => { app.locals.agentRunner.close(); push.close(); server.close(); };
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

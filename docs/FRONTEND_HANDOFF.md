@@ -1,3 +1,7 @@
+# Latest handoff: physical-phone verification
+
+Reset, automatic controls and phone notifications are now integrated into web/**. Pull current main and follow docs/AUTOMATION_AND_PUSH.md. Do not reimplement the older mission controls below. Report phone/browser, notification result while closed, agent start/stop/reset behavior and any exact error shown.
+
 # Frontend handoff — checkpoint semasa
 
 Create/join dan evidence UI sudah digabungkan. Tugasan seterusnya ialah borang misi, kawalan agent dan respons tugasan peserta.

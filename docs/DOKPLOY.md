@@ -21,9 +21,9 @@ AI_BASE_URL=https://api.commandcode.ai/provider/v1
 AI_MODEL=gpt-5.5
 ```
 
-Replace the placeholder only in Dokploy, never in Git, build arguments or `VITE_*` variables. No direct OpenAI API key is needed. The backend now consumes these variables. A configured key enables the host-triggered agent endpoint; the frontend owner must connect the mission form and step button. No model call runs on startup.
+Replace the placeholder only in Dokploy, never in Git, build arguments or `VITE_*` variables. No direct OpenAI API key is needed. The backend now consumes these variables. A configured key enables manual and automatic agent controls in the integrated frontend. No model call runs on startup.
 
-The planned client uses `/chat/completions` with Bearer authentication. CommandCode documents text and image inputs; account/model access, image input and tool calls still require a live integration test. Its Go plan does not include Provider API access. See [Provider API](https://commandcode.ai/docs/provider) and [model catalog](https://commandcode.ai/docs/reference/cli/models).
+The client uses `/chat/completions` with Bearer authentication. CommandCode documents text and image inputs; account/model access, image input and tool calls still require a live integration test. Its Go plan does not include Provider API access. See [Provider API](https://commandcode.ai/docs/provider) and [model catalog](https://commandcode.ai/docs/reference/cli/models).
 
 5. Before first deployment, Advanced → Volumes: add a named volume, name `pinjam-data`, container mount path `/app/.data`. Retain the same volume across deployments. The container runs as Node user UID/GID 1000; an existing volume must be writable by that user. Do not mount over `/app`.
 6. Keep replicas at **1** on the same server. Use stop-first update and rollback order, parallelism 1; do not enable start-first/overlapping zero-downtime updates. The JSON store assumes one writer. Moving to another server requires migrating its volume.
@@ -41,3 +41,9 @@ The planned client uses `/chat/completions` with Bearer authentication. CommandC
 The image has not been built locally if Docker is unavailable; Dokploy's build is the container validation checkpoint. Do not present a successful local source build as a tested deployment.
 
 Official references: [Applications](https://docs.dokploy.com/docs/core/applications), [Domains](https://docs.dokploy.com/docs/core/domains).
+
+## Automatic agent and phone push
+
+See [AUTOMATION_AND_PUSH.md](AUTOMATION_AND_PUSH.md). The server generates VAPID keys in DATA_DIR on first startup and retains subscriptions there. Keep that volume. HTTPS is required for phone push; iPhone users enable notifications from the installed Home Screen web app. Optional VAPID_SUBJECT sets the team's contact URL or mailto address; its default is the project repository URL.
+
+Stop-first/single-replica remains required. Restart/redeploy pauses active automation with a visible message. The host resumes explicitly. Test real closed-app notification delivery on each phone before the demo.

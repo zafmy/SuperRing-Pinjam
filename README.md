@@ -6,9 +6,11 @@ Our first mission: prepare a workshop table for three participants, with a noteb
 
 ## Current status
 
-**Mission, evidence and agent APIs are implemented; frontend agent controls are the next teammate task.** The host can save mission requirements through the API and explicitly trigger one CommandCode step. The model can request observations, offer voluntary tasks, verify fresh evidence and complete the mission under server-enforced checks. Participants can accept, decline and report done through the task API.
+**Mission/evidence UI, automatic agent controls, reset and phone push are implemented.** Hosts can confirm a mission, start automatic coordination, monitor progress, stop it and reset for a replacement mission without replacing participant links. Participants receive requests and voluntary tasks; the agent resumes after relevant input and checks fresh evidence before completion.
 
-The existing browser supports sessions and evidence. The frontend owner must add the mission form, agent step button and participant task controls using [the new handoff](docs/MISSION_AGENT_HANDOFF.md). No automatic background worker is running. Real CommandCode calls, vision quality and the two-phone end-to-end flow still require verification; automated tests use injected model responses.
+Web Push supports notifications when the page is closed after the participant enables them in a supported browser. iPhone users must use the Home Screen app. An in-app notification list remains available. Follow [the deployment and phone test guide](docs/AUTOMATION_AND_PUSH.md).
+
+Automated model/push tests pass; live CommandCode vision/tool behavior and real phone delivery still require verification. Each automatic run is bounded by steps and 20 minutes, pauses on provider errors, and stops after a server restart until the host resumes.
 
 ## Run locally
 
