@@ -13,7 +13,17 @@ PORT=3001
 DATA_DIR=/app/.data
 ```
 
-A model key is not required for the currently implemented evidence flow. When model support lands, configure `OPENAI_API_KEY` in Dokploy Environment, never in Git, build arguments or `VITE_*` variables. Setting a key alone does not activate AI.
+The chosen provider for the upcoming agent is CommandCode Provider API, using OpenAI model `gpt-5.5`. Prepare these runtime variables in Dokploy Environment:
+
+```env
+CMD_API_KEY=your_commandcode_key
+AI_BASE_URL=https://api.commandcode.ai/provider/v1
+AI_MODEL=gpt-5.5
+```
+
+Replace the placeholder only in Dokploy, never in Git, build arguments or `VITE_*` variables. No direct OpenAI API key is needed. The current evidence server does not consume these variables or call a model; setting them does not activate AI.
+
+The planned client uses `/chat/completions` with Bearer authentication. CommandCode documents text and image inputs; account/model access, image input and tool calls still require a live integration test. Its Go plan does not include Provider API access. See [Provider API](https://commandcode.ai/docs/provider) and [model catalog](https://commandcode.ai/docs/reference/cli/models).
 
 5. Before first deployment, Advanced → Volumes: add a named volume, name `pinjam-data`, container mount path `/app/.data`. Retain the same volume across deployments. The container runs as Node user UID/GID 1000; an existing volume must be writable by that user. Do not mount over `/app`.
 6. Keep replicas at **1** on the same server. Use stop-first update and rollback order, parallelism 1; do not enable start-first/overlapping zero-downtime updates. The JSON store assumes one writer. Moving to another server requires migrating its volume.

@@ -26,6 +26,12 @@
 - Added docs/DOKPLOY.md with persistent storage, single-instance stop-first updates, HTTPS routing and phone/redeploy checks.
 - Local Docker daemon is unavailable, so the container build and live deployment have not been verified. Source checks are run separately.
 
+## Provider decision
+
+- User selected CommandCode Provider API with an OpenAI model; default planned model is gpt-5.5.
+- Updated .env.example, README and backend/Dokploy handoffs with CMD_API_KEY, AI_BASE_URL and AI_MODEL.
+- Configuration documentation only: no model calls, credential validation or live vision/tool tests implemented by this change. Health remains agent: not_configured.
+
 ## Next owners
 
 - Frontend: create/join and real photo/question UI flows are complete. Test camera/image upload on the physical phones before the demo; then integrate later task UI only after its contract is available.
