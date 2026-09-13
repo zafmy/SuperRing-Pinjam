@@ -18,12 +18,15 @@
   },
   "dependencies": {
     "express": "^5.2.1",
+    "file-type": "^22.1.0",
+    "multer": "^2.3.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "zod": "^4.6.4"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
+    "@types/multer": "^2.2.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
