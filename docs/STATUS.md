@@ -5,7 +5,8 @@
 - Controls: host authorization; configured provider required; mission and participant prerequisites; one in-flight step per session; stale snapshot rejection; persisted successful-step retry keys; no raw provider errors or credentials exposed.
 - Validation: local typecheck, 15 automated tests and production build passed. New tests use injected model/HTTP responses. They cover host-only steps, mission requirement, durable retries, stale/concurrent steps, consent/refusal, fresh evidence gates, provider request shape and sanitized errors.
 - Not yet verified: real CommandCode key/model/vision/tool calls, deployed agent endpoint, physical-phone complete mission flow. No live model success is claimed.
-- Frontend next: implement docs/MISSION_AGENT_HANDOFF.md on feat/frontend. Existing session/evidence UI is preserved. The mission form, host agent button and participant task controls are not in the UI yet.
+- Frontend: host mission confirmation, one-click agent controls, real configuration/error states and participant task controls are implemented with shared contract types and persisted retry keys. Existing session/evidence UI is preserved.
+- Browser smoke check: host confirmed a real mission with three requirements; after a participant joined, the host correctly showed the server's “AI not configured” state and disabled the agent step. Task transitions and a successful live model step could not be manually exercised because no provider key was configured.
 - Execution model: one host click = one model decision. There is no automatic background worker; health configured only indicates local configuration.
 
 ## Earlier checkpoints (historical)
@@ -46,7 +47,7 @@
 
 ## Next owners
 
-- Frontend: create/join and real photo/question UI flows are complete. Test camera/image upload on the physical phones before the demo; then integrate later task UI only after its contract is available.
+- Frontend: create/join, evidence, mission, host agent controls and participant task UI are complete. Test camera/image upload and a full provider-backed two-phone mission before the demo.
 - Backend: real agent loop and task transitions after model credentials are configured.
 
 Update this file with actual test results and PR links. Do not describe fixture data as a working agent.

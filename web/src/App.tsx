@@ -1,5 +1,8 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
-import type { Observation, ObservationRequest, Participant, SessionEvent, SessionView } from '../../shared/contracts';
+import type {
+  Observation, ObservationRequest, Participant, Requirement, RespondToTaskInput,
+  SessionEvent, SessionView, Task,
+} from '../../shared/contracts';
 import { api, ApiError } from './api';
 
 type Role = 'host' | 'participant';
@@ -22,6 +25,38 @@ function newIdempotencyKey() {
   // getRandomValues also works on a phone using the laptop's HTTP LAN address.
   const bytes = window.crypto.getRandomValues(new Uint8Array(16));
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function newRequirement(label = '', quantity = 1): Requirement {
+  return { id: `requirement-${newIdempotencyKey().slice(0, 12)}`, label, quantity };
+}
+
+function pendingAgentStepKey(code: string) {
+  return `pinjam.pending-agent-step.v1:host:${code.toLowerCase()}`;
+}
+
+function readPendingAgentStep(code: string) {
+  try {
+    return window.sessionStorage.getItem(pendingAgentStepKey(code));
+  } catch {
+    return null;
+  }
+}
+
+function savePendingAgentStep(code: string, key: string) {
+  try {
+    window.sessionStorage.setItem(pendingAgentStepKey(code), key);
+  } catch {
+    // The in-memory click still completes; persistence only protects an uncertain retry after reload.
+  }
+}
+
+function clearPendingAgentStep(code: string) {
+  try {
+    window.sessionStorage.removeItem(pendingAgentStepKey(code));
+  } catch {
+    // Nothing further is required when session storage is unavailable.
+  }
 }
 
 function invitedCode() {
@@ -339,7 +374,7 @@ export default function App() {
           <p className="fine-print">Pautan peserta berbentuk <code>/join/KOD</code>.</p>
         </section>
       </div>
-      <p className="capability-note"><strong>Untuk sekarang:</strong> sesi, jemputan, permintaan gambar dan jawapan peserta tersedia. Tugasan dan semakan AI belum diaktifkan.</p>
+      <p className="capability-note"><strong>Untuk sekarang:</strong> sesi, misi, jemputan, bukti dan tugasan peserta tersedia. Agent hanya berjalan apabila penyelaras mencetus satu langkah dan pelayan telah dikonfigurasi.</p>
     </Page>
   );
 }
@@ -409,6 +444,16 @@ function SessionDashboard({
         />
       )}
 
+      {!isHost && (
+        <TaskInbox
+          code={session.code}
+          participantId={credential.participantId}
+          tasks={session.tasks}
+          token={credential.token}
+          onSession={onSession}
+        />
+      )}
+
       <div className="dashboard-grid">
         <section className="dashboard-card participants-card">
           <div className="card-heading">
@@ -436,24 +481,39 @@ function SessionDashboard({
           )}
         </section>
 
-        <section className="dashboard-card">
-          <p className="eyebrow">STATUS MISI</p>
-          {session.mission ? (
-            <>
-              <h2>{session.mission.goal}</h2>
-              <p className="mission-status">Status: {session.mission.status}</p>
-              <ul className="requirement-list">
-                {session.mission.requirements.map((requirement) => <li key={requirement.id}>{requirement.quantity} × {requirement.label}</li>)}
-              </ul>
-            </>
-          ) : (
-            <>
-              <h2>Belum ada misi</h2>
-              <p className="empty-state">Penyelaras masih boleh menghantar permintaan gambar atau soalan untuk mengumpul bukti sebenar.</p>
-            </>
-          )}
-          <p className="fine-print">Bukti yang diterima belum disemak AI dan tidak mengesahkan kerja telah selesai.</p>
-        </section>
+        {isHost && !session.mission && <MissionForm code={session.code} token={credential.token} onSession={onSession} />}
+
+        {(!isHost || session.mission) && (
+          <section className="dashboard-card">
+            <p className="eyebrow">STATUS MISI</p>
+            {session.mission ? (
+              <>
+                <h2>{session.mission.goal}</h2>
+                <p className="mission-status">Status: {session.mission.status}</p>
+                <ul className="requirement-list">
+                  {session.mission.requirements.map((requirement) => <li key={requirement.id}>{requirement.quantity} × {requirement.label}</li>)}
+                </ul>
+              </>
+            ) : (
+              <>
+                <h2>Belum ada misi</h2>
+                <p className="empty-state">Penyelaras belum menetapkan misi untuk ruang ini.</p>
+              </>
+            )}
+            <p className="fine-print">Bukti yang diterima belum disemak AI dan tidak mengesahkan kerja telah selesai.</p>
+          </section>
+        )}
+
+        {isHost && session.mission && (
+          <AgentControls
+            code={session.code}
+            hasParticipant={session.participants.length > 0}
+            missionStatus={session.mission.status}
+            events={session.events}
+            token={credential.token}
+            onSession={onSession}
+          />
+        )}
 
         {isHost && (
           <RequestComposer
@@ -485,6 +545,273 @@ function SessionDashboard({
         <button className="text-button" onClick={leaveThisDevice} type="button">Keluarkan akses daripada peranti ini</button>
       </footer>
     </>
+  );
+}
+
+function MissionForm({
+  code,
+  token,
+  onSession,
+}: {
+  code: string;
+  token: string;
+  onSession: (session: SessionView) => void;
+}) {
+  const [goal, setGoal] = useState('Sediakan meja workshop untuk 3 peserta');
+  const [requirements, setRequirements] = useState<Requirement[]>(() => [
+    newRequirement('Buku nota', 3),
+    newRequirement('Pen', 3),
+    newRequirement('Tanda nama', 3),
+  ]);
+  const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const changeMission = () => {
+    setError('');
+    setIdempotencyKey(newIdempotencyKey());
+  };
+
+  const updateRequirement = (id: string, update: Partial<Requirement>) => {
+    setRequirements((current) => current.map((item) => item.id === id ? { ...item, ...update } : item));
+    changeMission();
+  };
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedGoal = goal.trim();
+    const normalizedRequirements = requirements.map((item) => ({ ...item, label: item.label.trim() }));
+    if (!normalizedGoal || normalizedRequirements.some((item) => !item.label || !Number.isInteger(item.quantity) || item.quantity < 1)) {
+      setError('Masukkan matlamat serta nama dan kuantiti yang sah untuk setiap barang.');
+      return;
+    }
+
+    setSubmitting(true);
+    setError('');
+    try {
+      const result = await api.createMission(code, token, idempotencyKey, { goal: normalizedGoal, requirements: normalizedRequirements });
+      onSession(result.session);
+    } catch (missionError: unknown) {
+      if (missionError instanceof ApiError && missionError.code === 'MISSION_EXISTS') {
+        try {
+          const current = await api.getSession(code, token);
+          onSession(current.session);
+        } catch {
+          // Keep the original API error visible if the refresh cannot complete.
+        }
+      }
+      setError(describeError(missionError));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <section className="dashboard-card mission-form-card">
+      <p className="eyebrow">TETAPKAN MISI</p>
+      <h2>Apa yang perlu disediakan?</h2>
+      <p className="empty-state">Misi disahkan sekali untuk sesi ini dan tidak boleh diubah atau direset dalam prototaip.</p>
+      <form onSubmit={submit}>
+        <label htmlFor="mission-goal">Matlamat</label>
+        <textarea disabled={submitting} id="mission-goal" value={goal} maxLength={2000} onChange={(event) => { setGoal(event.target.value); changeMission(); }} required />
+        <div className="requirement-editor-heading">
+          <label>Barang diperlukan</label>
+          <span>{requirements.length}/20</span>
+        </div>
+        <div className="requirement-editor">
+          {requirements.map((requirement, index) => (
+            <div className="requirement-row" key={requirement.id}>
+              <label className="sr-only" htmlFor={`requirement-label-${requirement.id}`}>Barang {index + 1}</label>
+              <input disabled={submitting} id={`requirement-label-${requirement.id}`} value={requirement.label} onChange={(event) => updateRequirement(requirement.id, { label: event.target.value })} placeholder="Contoh: Pen" maxLength={120} required />
+              <label className="sr-only" htmlFor={`requirement-quantity-${requirement.id}`}>Kuantiti {index + 1}</label>
+              <input disabled={submitting} id={`requirement-quantity-${requirement.id}`} type="number" min="1" max="100" step="1" value={requirement.quantity} onChange={(event) => updateRequirement(requirement.id, { quantity: Number(event.target.value) })} required />
+              <button className="icon-button" disabled={submitting || requirements.length === 1} type="button" onClick={() => { setRequirements((current) => current.filter((item) => item.id !== requirement.id)); changeMission(); }} aria-label={`Buang ${requirement.label || `barang ${index + 1}`}`}>×</button>
+            </div>
+          ))}
+        </div>
+        <button className="secondary-button add-requirement-button" disabled={submitting || requirements.length >= 20} type="button" onClick={() => { setRequirements((current) => [...current, newRequirement()]); changeMission(); }}>+ Tambah barang</button>
+        {error && <p className="error" role="alert">{error}</p>}
+        <button className="primary-button" disabled={submitting} type="submit">{submitting ? 'Mengesahkan…' : 'Sahkan misi'}</button>
+      </form>
+    </section>
+  );
+}
+
+function AgentControls({
+  code,
+  events,
+  hasParticipant,
+  missionStatus,
+  token,
+  onSession,
+}: {
+  code: string;
+  events: SessionEvent[];
+  hasParticipant: boolean;
+  missionStatus: NonNullable<SessionView['mission']>['status'];
+  token: string;
+  onSession: (session: SessionView) => void;
+}) {
+  const [health, setHealth] = useState<'checking' | 'configured' | 'not_configured' | 'error'>('checking');
+  const [healthError, setHealthError] = useState('');
+  const [stepping, setStepping] = useState(false);
+  const [stepError, setStepError] = useState('');
+  const [summary, setSummary] = useState('');
+  const hasStepped = events.some((event) => event.kind === 'agent_step');
+  const missionComplete = missionStatus === 'completed';
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api.health(controller.signal)
+      .then((result) => setHealth(result.agent))
+      .catch((healthCheckError: unknown) => {
+        if (!controller.signal.aborted) {
+          setHealth('error');
+          setHealthError(describeError(healthCheckError));
+        }
+      });
+    return () => controller.abort();
+  }, []);
+
+  const step = async () => {
+    const key = readPendingAgentStep(code) ?? newIdempotencyKey();
+    savePendingAgentStep(code, key);
+    setStepping(true);
+    setStepError('');
+    try {
+      const result = await api.stepAgent(code, token, key);
+      clearPendingAgentStep(code);
+      onSession(result.session);
+      setSummary(result.summary);
+    } catch (agentError: unknown) {
+      if (agentError instanceof ApiError && agentError.code === 'AGENT_STALE') {
+        clearPendingAgentStep(code);
+        try {
+          const current = await api.getSession(code, token);
+          onSession(current.session);
+        } catch {
+          // The primary API error is more useful than a secondary refresh failure.
+        }
+      }
+      setStepError(describeError(agentError));
+    } finally {
+      setStepping(false);
+    }
+  };
+
+  const disabled = stepping || health !== 'configured' || !hasParticipant || missionComplete;
+  let stateMessage = 'Agent belum dimulakan. Misi yang aktif tidak bermaksud agent berjalan sendiri.';
+  if (health === 'checking') stateMessage = 'Menyemak konfigurasi AI pada pelayan…';
+  if (health === 'not_configured') stateMessage = 'Sambungan AI belum dikonfigurasi pada pelayan.';
+  if (health === 'error') stateMessage = `Tidak dapat menyemak sambungan AI: ${healthError}`;
+  if (!hasParticipant) stateMessage = 'Tunggu sekurang-kurangnya seorang peserta sebelum memulakan agent.';
+  if (missionComplete) stateMessage = 'Misi telah selesai. Tiada langkah agent lagi diperlukan.';
+  if (stepping) stateMessage = 'Agent sedang menilai… Satu keputusan sedang berjalan.';
+
+  return (
+    <section className="dashboard-card agent-controls">
+      <p className="eyebrow">KAWALAN AGENT</p>
+      <h2>{hasStepped ? 'Teruskan dengan bukti baharu' : 'Mulakan keputusan pertama'}</h2>
+      <p className="agent-state" aria-live="polite">{stateMessage}</p>
+      {summary && <p className="agent-summary"><strong>Keputusan terakhir:</strong> {summary}</p>}
+      {stepError && <p className="error" role="alert">{stepError}</p>}
+      <button className="primary-button" disabled={disabled} onClick={() => void step()} type="button">
+        {stepping ? 'Agent sedang menilai…' : hasStepped ? 'Langkah agent seterusnya' : 'Mulakan agent'}
+      </button>
+      <p className="fine-print">Setiap klik menjalankan satu keputusan model. Ia tidak dipanggil secara automatik dan mungkin mengambil sehingga satu minit.</p>
+    </section>
+  );
+}
+
+function TaskInbox({
+  code,
+  participantId,
+  tasks,
+  token,
+  onSession,
+}: {
+  code: string;
+  participantId: string | undefined;
+  tasks: Task[];
+  token: string;
+  onSession: (session: SessionView) => void;
+}) {
+  const ownTasks = tasks.filter((task) => task.participantId === participantId);
+  return (
+    <section className="task-inbox">
+      <p className="eyebrow">TUGASAN SAYA</p>
+      <h2>{ownTasks.length > 0 ? `${ownTasks.length} tugasan untuk anda` : 'Tiada tugasan baharu'}</h2>
+      {ownTasks.length === 0 ? (
+        <p className="empty-state">Agent mungkin meminta bukti atau menawarkan tugasan selepas langkah penyelaras yang seterusnya.</p>
+      ) : (
+        <div className="task-stack">
+          {ownTasks.map((task) => <ParticipantTaskCard key={task.id} code={code} task={task} token={token} onSession={onSession} />)}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ParticipantTaskCard({
+  code,
+  task,
+  token,
+  onSession,
+}: {
+  code: string;
+  task: Task;
+  token: string;
+  onSession: (session: SessionView) => void;
+}) {
+  const [note, setNote] = useState('');
+  const [actionKeys, setActionKeys] = useState<Partial<Record<RespondToTaskInput['action'], string>>>({});
+  const [submitting, setSubmitting] = useState<RespondToTaskInput['action'] | null>(null);
+  const [error, setError] = useState('');
+  const canDecline = task.status === 'offered' || task.status === 'accepted' || task.status === 'in_progress';
+
+  const respond = async (action: RespondToTaskInput['action']) => {
+    const key = actionKeys[action] ?? newIdempotencyKey();
+    if (!actionKeys[action]) setActionKeys((current) => ({ ...current, [action]: key }));
+    setSubmitting(action);
+    setError('');
+    try {
+      const result = await api.respondToTask(code, token, task.id, key, {
+        action,
+        ...(action === 'decline' && note.trim() ? { note: note.trim() } : {}),
+      });
+      onSession(result.session);
+    } catch (taskError: unknown) {
+      setError(describeError(taskError));
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  return (
+    <article className="task-card">
+      <div className="task-card-heading">
+        <span className={`task-status task-status-${task.status}`}>{task.status.replaceAll('_', ' ')}</span>
+        <span>{relativeTime(task.updatedAt)}</span>
+      </div>
+      <h3>{task.title}</h3>
+      {task.note && <p>{task.note}</p>}
+      {task.status === 'needs_verification' && <p className="task-waiting">Menunggu semakan bukti oleh agent.</p>}
+      {task.status === 'completed' && <p className="task-complete">Selesai disemak oleh agent.</p>}
+      {task.status === 'declined' && <p className="task-declined">Tugasan ini kekal ditolak.</p>}
+      {canDecline && (
+        <>
+          <label htmlFor={`task-note-${task.id}`}>Nota halangan (pilihan)</label>
+          <textarea disabled={submitting !== null} id={`task-note-${task.id}`} value={note} onChange={(event) => { setNote(event.target.value); setActionKeys((current) => ({ ...current, decline: undefined })); }} placeholder="Contoh: Saya tidak dapat capai kawasan itu." maxLength={2000} />
+        </>
+      )}
+      {error && <p className="error" role="alert">{error}</p>}
+      <div className="task-actions">
+        {task.status === 'offered' && <button className="primary-button" disabled={submitting !== null} onClick={() => void respond('accept')} type="button">{submitting === 'accept' ? 'Menerima…' : 'Terima'}</button>}
+        {task.status === 'accepted' && <button className="primary-button" disabled={submitting !== null} onClick={() => void respond('start')} type="button">{submitting === 'start' ? 'Memulakan…' : 'Mula'}</button>}
+        {(task.status === 'accepted' || task.status === 'in_progress') && <button className="secondary-button" disabled={submitting !== null} onClick={() => void respond('report_done')} type="button">{submitting === 'report_done' ? 'Melapor…' : 'Lapor siap'}</button>}
+        {canDecline && <button className="text-button task-decline-button" disabled={submitting !== null} onClick={() => void respond('decline')} type="button">{submitting === 'decline' ? 'Menghantar…' : task.status === 'offered' ? 'Tolak' : 'Tak dapat teruskan'}</button>}
+      </div>
+    </article>
   );
 }
 
