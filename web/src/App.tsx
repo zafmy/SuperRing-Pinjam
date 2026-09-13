@@ -4,6 +4,8 @@ import type {
   SessionEvent, SessionView, Task,
 } from '../../shared/contracts';
 import { api, ApiError } from './api';
+import { AutomationPanel } from './AutomationPanel';
+import { NotificationCenter, removeDevicePush } from './NotificationCenter';
 
 type Role = 'host' | 'participant';
 
@@ -96,6 +98,8 @@ function readSavedSessions(): Record<string, SavedSession> {
 
 function readSavedSession(joinCode: string | null): SavedSession | null {
   const savedSessions = readSavedSessions();
+  const hostCode = new URLSearchParams(window.location.search).get('host');
+  if (hostCode && !joinCode) return savedSessions[sessionKey('host', hostCode)] ?? null;
   if (joinCode) {
     // An invite link resumes only the participant who previously joined it.
     return savedSessions[sessionKey('participant', joinCode)] ?? null;
@@ -177,6 +181,7 @@ export default function App() {
   const [title, setTitle] = useState('Meja workshop');
   const [name, setName] = useState('');
   const [zone, setZone] = useState('');
+  const [joinCodeInput, setJoinCodeInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -274,8 +279,11 @@ export default function App() {
     }
   };
 
-  const leaveThisDevice = () => {
-    if (credential) forgetSession(credential);
+  const leaveThisDevice = async () => {
+    if (credential) {
+      try { await removeDevicePush(credential.code, credential.token); } catch { /* Browser permissions can also revoke push independently. */ }
+      forgetSession(credential);
+    }
     setCredential(null);
     setSession(null);
     setConnection('');
@@ -371,10 +379,14 @@ export default function App() {
           <span className="choice-number">02</span>
           <h2>Saya peserta</h2>
           <p>Buka pautan jemputan yang dikongsi oleh penyelaras untuk masuk ke ruang yang betul.</p>
-          <p className="fine-print">Pautan peserta berbentuk <code>/join/KOD</code>.</p>
+          <form onSubmit={(event) => { event.preventDefault(); const code = joinCodeInput.trim(); if (/^[a-fA-F0-9]{6}$/.test(code)) window.location.assign(`/join/${encodeURIComponent(code)}`); }}>
+            <label htmlFor="join-code">Atau masukkan kod sesi</label>
+            <input id="join-code" value={joinCodeInput} onChange={(event) => setJoinCodeInput(event.target.value.toUpperCase())} pattern="[a-fA-F0-9]{6}" minLength={6} maxLength={6} autoCapitalize="characters" required />
+            <button className="secondary-button" type="submit">Masuk dengan kod</button>
+          </form>
         </section>
       </div>
-      <p className="capability-note"><strong>Untuk sekarang:</strong> sesi, misi, jemputan, bukti dan tugasan peserta tersedia. Agent hanya berjalan apabila penyelaras mencetus satu langkah dan pelayan telah dikonfigurasi.</p>
+      <p className="capability-note"><strong>Untuk sekarang:</strong> sesi, misi, jemputan, bukti dan tugasan peserta tersedia. Penyelaras boleh menjalankan agent secara automatik, memantau kemajuan dan menghentikannya.</p>
     </Page>
   );
 }
@@ -433,6 +445,8 @@ function SessionDashboard({
           <p>Penyelaras boleh melihat bahawa anda tersedia di kawasan ini.</p>
         </section>
       )}
+
+      <NotificationCenter key={`${session.code}:${credential.participantId ?? 'host'}`} session={session} token={credential.token} participantId={credential.participantId} />
 
       {!isHost && (
         <RequestInbox
@@ -506,6 +520,9 @@ function SessionDashboard({
 
         {isHost && session.mission && (
           <AgentControls
+            key={session.mission.id}
+            missionId={session.mission.id}
+            automation={session.automation}
             code={session.code}
             hasParticipant={session.participants.length > 0}
             missionStatus={session.mission.status}
@@ -610,7 +627,7 @@ function MissionForm({
     <section className="dashboard-card mission-form-card">
       <p className="eyebrow">TETAPKAN MISI</p>
       <h2>Apa yang perlu disediakan?</h2>
-      <p className="empty-state">Misi disahkan sekali untuk sesi ini dan tidak boleh diubah atau direset dalam prototaip.</p>
+      <p className="empty-state">Sahkan matlamat dan barang yang diperlukan. Anda boleh reset misi kemudian tanpa menukar pautan peserta.</p>
       <form onSubmit={submit}>
         <label htmlFor="mission-goal">Matlamat</label>
         <textarea disabled={submitting} id="mission-goal" value={goal} maxLength={2000} onChange={(event) => { setGoal(event.target.value); changeMission(); }} required />
@@ -638,6 +655,8 @@ function MissionForm({
 }
 
 function AgentControls({
+  missionId,
+  automation,
   code,
   events,
   hasParticipant,
@@ -649,6 +668,8 @@ function AgentControls({
   events: SessionEvent[];
   hasParticipant: boolean;
   missionStatus: NonNullable<SessionView['mission']>['status'];
+  missionId: string;
+  automation?: SessionView['automation'];
   token: string;
   onSession: (session: SessionView) => void;
 }) {
@@ -656,7 +677,7 @@ function AgentControls({
   const [healthError, setHealthError] = useState('');
   const [stepping, setStepping] = useState(false);
   const [stepError, setStepError] = useState('');
-  const pendingKey = useRef<string | null>(readPendingAgentStep(code));
+  const pendingKey = useRef<string | null>(readPendingAgentStep(`${code}:${missionId}`));
   const latestStep = [...events].reverse().find((event) => event.kind === 'agent_step');
   const summary = latestStep?.summary ?? '';
   const hasStepped = events.some((event) => event.kind === 'agent_step');
@@ -677,19 +698,19 @@ function AgentControls({
 
   const step = async () => {
     if (stepping) return;
-    const key = pendingKey.current ?? readPendingAgentStep(code) ?? newIdempotencyKey();
+    const key = pendingKey.current ?? readPendingAgentStep(`${code}:${missionId}`) ?? newIdempotencyKey();
     pendingKey.current = key;
-    savePendingAgentStep(code, key);
+    savePendingAgentStep(`${code}:${missionId}`, key);
     setStepping(true);
     setStepError('');
     try {
       const result = await api.stepAgent(code, token, key);
-      clearPendingAgentStep(code);
+      clearPendingAgentStep(`${code}:${missionId}`);
       pendingKey.current = null;
       onSession(result.session);
     } catch (agentError: unknown) {
       if (agentError instanceof ApiError && agentError.code === 'AGENT_STALE') {
-        clearPendingAgentStep(code);
+        clearPendingAgentStep(`${code}:${missionId}`);
         pendingKey.current = null;
         try {
           const current = await api.getSession(code, token);
@@ -704,7 +725,7 @@ function AgentControls({
     }
   };
 
-  const disabled = stepping || health !== 'configured' || !hasParticipant || missionComplete;
+  const disabled = Boolean(automation?.enabled) || stepping || health !== 'configured' || !hasParticipant || missionComplete;
   let stateMessage = hasStepped
     ? 'Langkah terakhir selesai. Semak respons peserta, kemudian cetus langkah seterusnya apabila bersedia.'
     : 'Agent belum dimulakan. Misi yang aktif tidak bermaksud agent berjalan sendiri.';
@@ -713,6 +734,7 @@ function AgentControls({
   if (health === 'error') stateMessage = `Tidak dapat menyemak sambungan AI: ${healthError}`;
   if (!hasParticipant) stateMessage = 'Tunggu sekurang-kurangnya seorang peserta sebelum memulakan agent.';
   if (missionComplete) stateMessage = 'Misi telah selesai. Tiada langkah agent lagi diperlukan.';
+  if (automation?.enabled) stateMessage = 'Mod automatik aktif. Langkah manual dikunci; pantau status di bawah.';
   if (stepping) stateMessage = 'Agent sedang menilai… Satu keputusan sedang berjalan.';
 
   return (
@@ -725,7 +747,8 @@ function AgentControls({
       <button className="primary-button" disabled={disabled} onClick={() => void step()} type="button">
         {stepping ? 'Agent sedang menilai…' : hasStepped ? 'Langkah agent seterusnya' : 'Mulakan agent'}
       </button>
-      <p className="fine-print">Setiap klik menjalankan satu keputusan model. Ia tidak dipanggil secara automatik dan mungkin mengambil sehingga satu minit.</p>
+      <p className="fine-print">Butang di atas menjalankan satu langkah manual. Gunakan mod automatik di bawah untuk meneruskan tanpa klik berulang.</p>
+      <AutomationPanel code={code} token={token} missionId={missionId} automation={automation} configured={health === 'configured' && hasParticipant} complete={missionComplete} onSession={onSession} onReset={() => { clearPendingAgentStep(`${code}:${missionId}`); pendingKey.current = null; }} />
     </section>
   );
 }

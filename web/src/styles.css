@@ -209,3 +209,16 @@ form .primary-button { margin-top: 1.5rem; }
   .evidence-card { grid-column: auto; }
   .session-footer { align-items: start; flex-direction: column; }
 }
+
+.automation-panel { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #b9d1bb; }
+.automation-panel > p, .notification-center > p { margin-top: .65rem; }
+.monitor-grid { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }
+.monitor-grid dt { color: #526b5b; font-size: .8rem; }
+.monitor-grid dd { margin: .25rem 0 0; font-weight: 750; }
+.automation-panel input { max-width: 8rem; }
+.stop-agent { color: #873830; border-color: #b9786f; }
+.reset-confirm { margin-top: .75rem; padding: .85rem; background: #fff3df; border: 1px solid #d7b57c; border-radius: .6rem; }
+.notification-center { margin: 1rem 0; padding: 1rem; border: 1px solid #c9d7ca; border-radius: .8rem; background: #f4f9f1; }
+.notice-list { list-style: none; margin: .75rem 0; padding: 0; }
+.notice-list li { display: grid; gap: .25rem; padding: .65rem 0; border-bottom: 1px solid #d6e2d4; }
+.notice-list span { color: #526b5b; overflow-wrap: anywhere; }

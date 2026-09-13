@@ -54,7 +54,7 @@ export interface Task {
 
 export interface SessionEvent {
   id: string;
-  kind: 'participant_joined' | 'mission_created' | 'request_created' | 'observation_added' | 'task_updated' | 'agent_error' | 'agent_step';
+  kind: 'participant_joined' | 'mission_created' | 'request_created' | 'observation_added' | 'task_updated' | 'agent_error' | 'agent_step' | 'mission_reset' | 'automation_changed';
   summary: string;
   createdAt: string;
 }
@@ -68,6 +68,7 @@ export interface SessionView {
   updatedAt: string;
   participants: Participant[];
   mission: Mission | null;
+  automation?: AutomationState;
   requests: ObservationRequest[];
   observations: Observation[];
   tasks: Task[];
@@ -97,3 +98,18 @@ export interface AgentStepResult {
   action: 'request' | 'offer_task' | 'verify_task' | 'complete_mission' | 'wait';
   summary: string;
 }
+
+export interface AutomationState {
+  runId: string;
+  missionId: string;
+  enabled: boolean;
+  status: 'running' | 'waiting' | 'stopped' | 'completed' | 'error' | 'limit_reached';
+  steps: number;
+  maxSteps: number;
+  startedAt: string;
+  updatedAt: string;
+  deadlineAt: string;
+  message: string;
+}
+export interface MissionControlInput { missionId: string }
+export interface StartAutomationInput extends MissionControlInput { maxSteps?: number }

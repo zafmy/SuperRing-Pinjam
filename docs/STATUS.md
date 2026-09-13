@@ -1,3 +1,14 @@
+# Current checkpoint: reset, automatic agent and phone notifications
+
+- Implemented end-to-end in code: host reset with archived records and retained participants; server automatic runner; monitoring/start/stop controls; in-app notices and Web Push enrollment/test/disable.
+- Automatic runner shares one in-flight lock with manual calls, waits on unchanged input, resumes on relevant updates, stops at completion/error/step/time limits and rejects results after stop/reset. Default 30 steps, maximum 100, deadline 20 minutes. Restart pauses runs with a visible message.
+- Web Push: persisted VAPID keys and subscriptions, caller-specific messages, generic lock-screen text, bounded retry, expired endpoint removal, known-provider endpoint validation, service worker and installable manifest. Joining by code supports the iPhone Home Screen flow.
+- Validation: local typecheck, 23 tests and production build passed. Tests cover full automatic completion, decline/replan, waiting without extra calls, stop/reset races, retry/persistence/access controls, push encryption, subscriber isolation, retry limits and expired endpoints.
+- Not yet verified: real CommandCode inference, closed-app notification delivery on physical phones, browser visual/interactive checks for these new controls, and this deployment. Injected model/push results are not presented as live success.
+- Team guide: docs/AUTOMATION_AND_PUSH.md. Existing frontend and backend are integrated; teammate should pull main and perform the physical-phone checklist.
+
+## Previous checkpoint (historical)
+
 # Current checkpoint: integrated mission and agent UI
 
 - Implemented: host-confirmed mission API; CommandCode Chat Completions adapter using gpt-5.5 by default; one explicit host-triggered step with text/images and one validated tool call.

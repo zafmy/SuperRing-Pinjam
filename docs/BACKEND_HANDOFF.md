@@ -1,3 +1,7 @@
+# Latest backend checkpoint
+
+AgentRunner in server/automation.ts now owns manual/automatic execution and stop/reset cancellation. Worker access is server-internal and scoped to a persisted runId/missionId; public control routes remain host-only. PushService uses separate persisted VAPID/subscription files and does not expose them in session snapshots. Refer to API_CONTRACT.md v0.4 and AUTOMATION_AND_PUSH.md. The old manual-only design notes below are historical.
+
 # Backend handoff
 
 Implemented: sessions, evidence, confirmed missions, host-triggered CommandCode agent steps and participant task transitions. See API_CONTRACT.md v0.3 and MISSION_AGENT_HANDOFF.md for frontend integration.

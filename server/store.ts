@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AgentStepResult, RespondToTaskInput, CreateMissionInput, CreateRequestInput, Participant, SessionEvent, SessionView, SubmitObservationInput } from '../shared/contracts';
+import type { AutomationState, AgentStepResult, RespondToTaskInput, CreateMissionInput, CreateRequestInput, Participant, SessionEvent, SessionView, SubmitObservationInput } from '../shared/contracts';
 
 import type { AgentDecision } from './agent-decision';
 
@@ -23,6 +23,8 @@ interface StoredSession {
   participantTokenHashes: Record<string, string>;
   media: Record<string, MediaRecord>;
   mutations: Record<string, MutationRecord>;
+  automationWaitSignature?: string;
+  archives?: SessionView[];
   agentRuns?: Record<string, { action: AgentStepResult['action']; summary: string }>;
 }
 
@@ -36,6 +38,7 @@ const digest = (value: string | Buffer) => createHash('sha256').update(value).di
 
 /** Single-process hackathon storage. Use a transactional DB before multi-instance hosting. */
 export class SessionStore {
+  private listeners = new Set<(code: string) => void>();
   private sessions: Record<string, StoredSession>;
   private file: string;
   private mediaDirectory: string;
@@ -64,6 +67,7 @@ export class SessionStore {
     renameSync(`${this.file}.tmp`, this.file);
     // Do not publish in-memory changes if the disk write failed.
     this.sessions = next;
+    for (const listener of this.listeners) listener(code);
   }
 
   authorize(code: string, token: string, role?: Principal['role']): Principal {
@@ -153,7 +157,7 @@ export class SessionStore {
 
   createMission(code: string, token: string, key: string, input: CreateMissionInput) {
     this.mutate(code, token, 'host', 'mission', key, input, (record) => {
-      if (record.view.mission) throw new StoreError(409, 'MISSION_EXISTS', 'Use a new session for another mission.');
+      if (record.view.mission) throw new StoreError(409, 'MISSION_EXISTS', 'Reset the current mission before confirming another one.');
       const id = randomUUID();
       record.view.mission = { id, ...input, status: 'active' };
       this.event(record, 'mission_created', 'The host confirmed the mission requirements.');
@@ -205,6 +209,10 @@ export class SessionStore {
 
   readMedia(code: string, token: string, mediaId: string) {
     this.authorize(code, token);
+    return this.mediaBytes(code, mediaId);
+  }
+
+  private mediaBytes(code: string, mediaId: string) {
     const media = this.lookup(code).media[mediaId];
     if (!media) throw new StoreError(404, 'MEDIA_NOT_FOUND', 'Image is not in this session.');
     try {
@@ -255,6 +263,10 @@ export class SessionStore {
     this.authorize(code, token, 'host');
     const previous = this.agentResult(code, token, key);
     if (previous) return previous;
+    return this.applyDecision(code, key, revision, decision, visibleImageIds);
+  }
+
+  private applyDecision(code: string, key: string, revision: number, decision: AgentDecision, visibleImageIds: string[], afterApply?: (record: StoredSession) => void): AgentStepResult {
     const record = structuredClone(this.lookup(code));
     const view = record.view;
     if (view.revision !== revision) throw new StoreError(409, 'AGENT_STALE', 'Sesi berubah semasa agent berfikir. Cuba langkah baharu.');
@@ -307,8 +319,9 @@ export class SessionStore {
     this.event(record, 'agent_step', decision.summary);
     record.agentRuns ??= {};
     record.agentRuns[key] = { action: decision.action, summary: decision.summary };
+    afterApply?.(record);
     this.commit(view.code, record);
-    return { session: this.read(code, token), action: decision.action, summary: decision.summary };
+    return { session: structuredClone(record.view), action: decision.action, summary: decision.summary };
   }
 
   respondToTask(code: string, token: string, key: string, taskId: string, input: RespondToTaskInput) {
@@ -327,4 +340,138 @@ export class SessionStore {
     return { session: this.read(code, token) };
   }
 
+
+  onChange(listener: (code: string) => void) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  resetMission(code: string, token: string, key: string, missionId: string) {
+    this.mutate(code, token, 'host', 'mission-reset', key, { missionId }, (record) => {
+      if (record.view.mission?.id !== missionId) throw new StoreError(409, 'MISSION_CHANGED', 'Misi telah berubah. Muat semula paparan.');
+      record.archives ??= [];
+      record.archives.push(structuredClone(record.view));
+      // Archive, rather than delete, old evidence and history. Tokens and invite stay valid.
+      record.view.mission = null;
+      record.view.requests = [];
+      record.view.tasks = [];
+      record.view.observations = [];
+      record.view.events = [];
+      if (record.view.automation) {
+        record.view.automation.enabled = false;
+        record.view.automation.status = 'stopped';
+        record.view.automation.message = 'Misi direset oleh penyelaras.';
+        record.view.automation.updatedAt = new Date().toISOString();
+      }
+      delete record.automationWaitSignature;
+      this.event(record, 'mission_reset', 'Penyelaras mereset misi. Tunggu misi baharu; tugasan lama tidak lagi aktif.');
+      return missionId;
+    });
+    return { session: this.read(code, token) };
+  }
+
+  startAutomation(code: string, token: string, key: string, missionId: string, maxSteps: number) {
+    this.mutate(code, token, 'host', 'auto-start', key, { missionId, maxSteps }, (record) => {
+      const view = record.view;
+      if (view.mission?.id !== missionId) throw new StoreError(409, 'MISSION_CHANGED', 'Sahkan misi semasa dahulu.');
+      if (view.mission.status === 'completed') throw new StoreError(409, 'MISSION_COMPLETED', 'Misi sudah selesai.');
+      if (!view.participants.length) throw new StoreError(409, 'PARTICIPANTS_REQUIRED', 'Jemput peserta dahulu.');
+      if (view.automation?.enabled) return view.automation.runId;
+      const now = new Date();
+      view.automation = { runId: randomUUID(), missionId, enabled: true, status: 'running', steps: 0, maxSteps,
+        startedAt: now.toISOString(), updatedAt: now.toISOString(), deadlineAt: new Date(now.getTime() + 20 * 60_000).toISOString(), message: 'Mod automatik dimulakan.' };
+      delete record.automationWaitSignature;
+      this.event(record, 'automation_changed', 'Penyelaras memulakan agent automatik.');
+      return view.automation.runId;
+    });
+    return { session: this.read(code, token) };
+  }
+
+  stopAgent(code: string, token: string, key: string, missionId: string) {
+    this.mutate(code, token, 'host', 'agent-stop', key, { missionId }, (record) => {
+      if (record.view.mission?.id !== missionId) throw new StoreError(409, 'MISSION_CHANGED', 'Misi telah berubah.');
+      const now = new Date().toISOString();
+      record.view.automation ??= { runId: randomUUID(), missionId, enabled: false, status: 'stopped', steps: 0, maxSteps: 30, startedAt: now, updatedAt: now, deadlineAt: now, message: '' };
+      record.view.automation.enabled = false;
+      record.view.automation.status = 'stopped';
+      record.view.automation.updatedAt = now;
+      record.view.automation.message = 'Dihentikan oleh penyelaras. Tiada keputusan baharu akan digunakan.';
+      this.event(record, 'automation_changed', record.view.automation.message);
+      return record.view.automation.runId;
+    });
+    return { session: this.read(code, token) };
+  }
+
+  /** Worker-only access: public routes must authorize before obtaining any snapshot. */
+  workerState(code: string) { return structuredClone(this.lookup(code).view); }
+
+  private requireRun(code: string, runId: string) {
+    const record = this.lookup(code);
+    if (!record.view.automation?.enabled || record.view.automation.runId !== runId || record.view.automation.missionId !== record.view.mission?.id) {
+      throw new StoreError(409, 'AGENT_STOPPED', 'Agent sudah dihentikan atau misi berubah.');
+    }
+    return record;
+  }
+
+  workerShouldWait(code: string, runId: string) {
+    const record = this.requireRun(code, runId);
+    return record.automationWaitSignature === agentInputSignature(record.view);
+  }
+
+  beginAutomaticStep(code: string, runId: string) {
+    const record = structuredClone(this.requireRun(code, runId));
+    const state = record.view.automation!;
+    if (state.steps >= state.maxSteps || Date.now() >= Date.parse(state.deadlineAt)) throw new StoreError(409, 'AGENT_LIMIT', 'Had langkah atau masa dicapai.');
+    state.steps++;
+    state.status = 'running';
+    state.message = 'Agent sedang menilai bukti…';
+    state.updatedAt = new Date().toISOString();
+    record.view.revision++;
+    record.view.updatedAt = state.updatedAt;
+    this.commit(record.view.code, record);
+    return structuredClone(record.view);
+  }
+
+  workerImages(code: string, runId: string) {
+    const record = this.requireRun(code, runId);
+    return record.view.observations.filter((item) => item.mediaId).slice(-6).map((item) => {
+      const media = this.mediaBytes(code, item.mediaId!);
+      return { observationId: item.id, dataUrl: `data:${media.mime};base64,${media.buffer.toString('base64')}` };
+    });
+  }
+
+  applyAutomaticDecision(code: string, runId: string, revision: number, decision: AgentDecision, imageIds: string[]) {
+    const state = this.requireRun(code, runId).view.automation!;
+    return this.applyDecision(code, `auto:${runId}:${state.steps}`, revision, decision, imageIds, (record) => {
+      const auto = record.view.automation!;
+      const waiting = ['request', 'offer_task', 'wait'].includes(decision.action);
+      auto.status = decision.action === 'complete_mission' ? 'completed' : waiting ? 'waiting' : 'running';
+      auto.enabled = auto.status !== 'completed';
+      auto.message = decision.summary;
+      auto.updatedAt = new Date().toISOString();
+      if (waiting) record.automationWaitSignature = agentInputSignature(record.view);
+      else delete record.automationWaitSignature;
+    });
+  }
+
+  haltAutomation(code: string, runId: string, status: 'error' | 'limit_reached' | 'stopped', message: string) {
+    const original = this.lookup(code);
+    if (!original.view.automation?.enabled || original.view.automation.runId !== runId) return;
+    const record = structuredClone(original);
+    Object.assign(record.view.automation!, { enabled: false, status, message, updatedAt: new Date().toISOString() });
+    this.event(record, status === 'error' ? 'agent_error' : 'automation_changed', message);
+    this.commit(record.view.code, record);
+  }
+
+  recoverAutomations() {
+    for (const record of Object.values(this.sessions)) {
+      if (record.view.automation?.enabled) this.haltAutomation(record.view.code, record.view.automation.runId, 'stopped', 'Pelayan dimulakan semula. Tekan Mulakan automatik untuk menyambung.');
+    }
+  }
+
+}
+
+/** Ignore monitor/event changes so polling and waiting never spend model credits. */
+export function agentInputSignature(view: SessionView) {
+  return digest(JSON.stringify({ mission: view.mission, participants: view.participants, requests: view.requests, observations: view.observations, tasks: view.tasks }));
 }
