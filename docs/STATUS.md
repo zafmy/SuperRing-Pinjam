@@ -20,6 +20,12 @@
 - Homepage capability copy and README now reflect the implemented evidence UI.
 - Physical-phone image picking/upload and real model calls still need verification. No local .env file was present at this checkpoint.
 
+## Dokploy deployment preparation
+
+- Added a multi-stage Node 22 Dockerfile with build-time checks, a non-root runtime, and an API health check; .dockerignore excludes secrets and local session data.
+- Added docs/DOKPLOY.md with persistent storage, single-instance stop-first updates, HTTPS routing and phone/redeploy checks.
+- Local Docker daemon is unavailable, so the container build and live deployment have not been verified. Source checks are run separately.
+
 ## Next owners
 
 - Frontend: create/join and real photo/question UI flows are complete. Test camera/image upload on the physical phones before the demo; then integrate later task UI only after its contract is available.
