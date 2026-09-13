@@ -129,3 +129,9 @@ Use shared/fixtures.ts in an explicitly labeled development mode. Session, missi
 ## Frontend integration note
 
 No public fields or existing endpoint payloads changed in v0.2. The frontend owner can add methods to web/src/api.ts for the newly implemented routes. For JSON requests send Authorization, Content-Type: application/json and Idempotency-Key. For image upload send Authorization and Idempotency-Key with a FormData body; use a separate request helper so the current JSON helper does not set the wrong Content-Type.
+
+## Host removes a participant (additive)
+
+`POST /api/sessions/:code/participants/:participantId/remove` requires the host bearer token and `Idempotency-Key`; body `{}`. Returns `{ session }`. Participant callers receive 403; unknown participant IDs receive 404. A successful retry with the same key is safe.
+
+Removes active membership and revokes its token immediately (subsequent access returns 401), cancels pending requests and unfinished tasks, and records `participant_removed`. Existing evidence and completed history remain. Queued push subscriptions are purged; already delivered notifications cannot be recalled. In-flight agent decisions from the old revision are rejected. Automatic mode replans for remaining participants or waits for a new join when none remain. The invitation code remains valid, so joining again creates a new identity.

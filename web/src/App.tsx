@@ -177,6 +177,7 @@ export default function App() {
   const [credential, setCredential] = useState<SavedSession | null>(() => initialSaved);
   const [session, setSession] = useState<SessionView | null>(null);
   const [connection, setConnection] = useState('');
+  const [accessLost, setAccessLost] = useState(false);
   const [storageWarning, setStorageWarning] = useState(false);
   const [title, setTitle] = useState('Meja workshop');
   const [name, setName] = useState('');
@@ -193,7 +194,7 @@ export default function App() {
     let activeController: AbortController | null = null;
 
     const refresh = async () => {
-      if (disposed || inFlight || document.visibilityState !== 'visible') return;
+      if (disposed || inFlight || accessLost || document.visibilityState !== 'visible') return;
       inFlight = true;
       const controller = new AbortController();
       activeController = controller;
@@ -205,6 +206,7 @@ export default function App() {
         }
       } catch (error: unknown) {
         if (!disposed && !controller.signal.aborted) {
+          if (error instanceof ApiError && error.status === 401) { setSession(null); setAccessLost(true); }
           setConnection(`Tidak dapat menyegerakkan: ${describeError(error)}`);
         }
       } finally {
@@ -225,9 +227,10 @@ export default function App() {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [credential]);
+  }, [credential, accessLost]);
 
   const activate = (next: SavedSession, view: SessionView) => {
+    setAccessLost(false);
     setStorageWarning(!saveSession(next));
     setCredential(next);
     setSession(view);
@@ -284,6 +287,7 @@ export default function App() {
       try { await removeDevicePush(credential.code, credential.token); } catch { /* Browser permissions can also revoke push independently. */ }
       forgetSession(credential);
     }
+    setAccessLost(false);
     setCredential(null);
     setSession(null);
     setConnection('');
@@ -340,11 +344,11 @@ export default function App() {
   if (screen === 'session' && credential) {
     return (
       <Page wide>
-        {!session ? (
+        {!session || accessLost ? (
           <section className="form-panel loading-panel" aria-live="polite">
             <p className="eyebrow">MEMULIHKAN SESI</p>
-            <h1>Menyambung semula…</h1>
-            <p>{connection || 'Menyemak akses selamat pada peranti ini.'}</p>
+            <h1>{accessLost ? "Akses sesi telah ditamatkan" : "Menyambung semula…"}</h1>
+            <p>{accessLost ? 'Anda mungkin telah dikeluarkan oleh penyelaras. Hubungi penyelaras untuk menyertai semula.' : connection || 'Menyemak akses selamat pada peranti ini.'}</p>
             <button className="secondary-button" onClick={leaveThisDevice} type="button">Gunakan sesi lain</button>
           </section>
         ) : (
@@ -489,6 +493,7 @@ function SessionDashboard({
                     <span>{participant.zone}</span>
                   </div>
                   <time dateTime={participant.joinedAt}>Masuk {relativeTime(participant.joinedAt)}</time>
+                  {isHost && <RemoveParticipant code={session.code} token={credential.token} participant={participant} onSession={onSession} />}
                 </li>
               ))}
             </ul>
@@ -1135,4 +1140,28 @@ function EvidenceImage({
   if (error) return <p className="error" role="status">Gambar tidak dapat dimuat: {error}</p>;
   if (!url) return <p className="fine-print">Memuatkan bukti gambar…</p>;
   return <img className="evidence-image" src={url} alt={`Bukti gambar daripada ${participantName}`} />;
+}
+
+function RemoveParticipant({ code, token, participant, onSession }: {
+  code: string; token: string; participant: Participant; onSession: (session: SessionView) => void;
+}) {
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const key = useRef(newIdempotencyKey());
+  const remove = async () => {
+    if (busy) return;
+    setBusy(true); setError('');
+    try { onSession((await api.removeParticipant(code, token, key.current, participant.id)).session); }
+    catch (failure) { setError(describeError(failure)); }
+    finally { setBusy(false); }
+  };
+  return <div className="remove-participant">
+    {!confirm ? <button className="text-button" type="button" onClick={() => setConfirm(true)} aria-label={`Keluarkan ${participant.name}`}>Keluarkan</button> : <>
+      <p>Keluarkan {participant.name}? Akses dan tugasan aktifnya akan dibatalkan.</p>
+      <button className="text-button" type="button" disabled={busy} onClick={() => void remove()}>{busy ? 'Mengeluarkan…' : 'Ya, keluarkan'}</button>
+      <button className="text-button" type="button" disabled={busy} onClick={() => setConfirm(false)}>Batal</button>
+    </>}
+    {error && <p className="error" role="alert">{error}</p>}
+  </div>;
 }

@@ -79,6 +79,7 @@ export class PushService {
     return { subscribed: Boolean(record), lastError: record?.lastError ?? null, lastSentAt: record?.lastSentAt ?? null };
   }
   private async deliver(record: RecordEntry, notice: SessionNotice) {
+    if (record.participantId && !this.store.workerState(record.code).participants.some((person) => person.id === record.participantId)) throw new StoreError(401, 'UNAUTHORIZED', 'Participant access revoked.');
     // Lock-screen text stays generic; private mission details are fetched after authentication.
     const url = record.participantId ? `/join/${record.code}` : `/?host=${record.code}`;
     await this.send(record.subscription, JSON.stringify({ title: `PINJAM: ${notice.title}`, body: 'Buka sesi untuk melihat butiran.', tag: `${record.code}:${notice.id}`, url }), {
@@ -116,9 +117,11 @@ export class PushService {
       const session = this.store.workerState(code);
       for (const [id, record] of Object.entries(this.records)) {
         if (record.code !== code) continue;
+        if (record.participantId && !session.participants.some((person) => person.id === record.participantId)) { delete this.records[id]; this.save(); continue; }
         const notices = sessionNotices(session, record.participantId).filter((item) => !record.seen.includes(item.id) && (record.attempts[item.id] ?? 0) < 3);
         for (const notice of notices) {
           if (this.closed || this.records[id] !== record) break;
+          if (record.participantId && !this.store.workerState(code).participants.some((person) => person.id === record.participantId)) { delete this.records[id]; this.save(); break; }
           if (!sessionNotices(this.store.workerState(code), record.participantId).some((item) => item.id === notice.id)) continue;
           record.attempts[notice.id] = (record.attempts[notice.id] ?? 0) + 1;
           this.save();

@@ -25,6 +25,7 @@ interface StoredSession {
   mutations: Record<string, MutationRecord>;
   automationWaitSignature?: string;
   archives?: SessionView[];
+  removedParticipants?: Participant[];
   agentRuns?: Record<string, { action: AgentStepResult['action']; summary: string }>;
 }
 
@@ -344,6 +345,31 @@ export class SessionStore {
   onChange(listener: (code: string) => void) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  removeParticipant(code: string, token: string, key: string, participantId: string) {
+    this.mutate(code, token, 'host', 'participant-remove', key, { participantId }, (record) => {
+      const participant = record.view.participants.find((person) => person.id === participantId);
+      if (!participant) throw new StoreError(404, 'PARTICIPANT_NOT_FOUND', 'Peserta ini tidak lagi berada dalam sesi.');
+      record.removedParticipants ??= [];
+      record.removedParticipants.push(participant);
+      record.view.participants = record.view.participants.filter((person) => person.id !== participantId);
+      delete record.participantTokenHashes[participantId];
+      const now = new Date().toISOString();
+      for (const request of record.view.requests) if (request.participantId === participantId && request.status === 'pending') request.status = 'cancelled';
+      for (const task of record.view.tasks) if (task.participantId === participantId && !['completed', 'declined', 'cancelled'].includes(task.status)) {
+        task.status = 'cancelled'; task.updatedAt = now; task.note = 'Peserta dikeluarkan oleh penyelaras.';
+      }
+      this.event(record, 'participant_removed', `${participant.name} dikeluarkan oleh penyelaras. Tugasan aktifnya dibatalkan.`);
+      if (record.view.automation?.enabled && record.view.participants.length === 0) {
+        record.view.automation.status = 'waiting';
+        record.view.automation.message = 'Tiada peserta. Menunggu peserta baharu.';
+        record.view.automation.updatedAt = now;
+        record.automationWaitSignature = agentInputSignature(record.view);
+      }
+      return participantId;
+    });
+    return { session: this.read(code, token) };
   }
 
   resetMission(code: string, token: string, key: string, missionId: string) {
