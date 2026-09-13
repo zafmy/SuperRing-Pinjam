@@ -139,3 +139,54 @@ test('a participant decline wakes automatic replanning and leaves the original t
     assert.equal(tasks[0].status, 'declined'); assert.equal(tasks[1].participantId, second.participantId); assert.equal(tasks[1].status, 'offered');
   } finally { runner.close(); x.clean(); }
 });
+
+
+test('removal revokes credentials durably, cancels work and preserves evidence with idempotent host-only access', async () => {
+  const x = setup();
+  const other = x.store.join(x.code, 'Mira', 'Door');
+  const app = createApp(x.store);
+  const server = app.listen(0, '127.0.0.1'); await new Promise<void>((resolve) => server.once('listening', resolve));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/sessions/${x.code}/participants/${x.person.participantId}/remove`;
+  const remove = (token: string) => fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': 'remove-person' } });
+  try {
+    x.store.createRequest(x.code, x.token, 'initial-photo', { participantId: x.person.participantId, kind: 'photo', prompt: 'Photo' });
+    await x.photo();
+    const before = x.store.read(x.code, x.token);
+    x.store.applyAgentDecision(x.code, x.token, 'offer-before-kick', before.revision, { action: 'offer_task', participantId: x.person.participantId, title: 'Bawa pen', sourceObservationIds: [before.observations[0].id], summary: 'Offer' }, []);
+    x.store.createRequest(x.code, x.token, 'pending-photo', { participantId: x.person.participantId, kind: 'photo', prompt: 'Photo again' });
+    assert.equal((await remove(other.participantToken)).status, 403);
+    assert.equal((await remove(x.store.create('Other session').hostToken)).status, 401);
+    assert.equal((await remove(x.token)).status, 200);
+    assert.equal((await remove(x.token)).status, 200);
+    const after = x.store.read(x.code, other.participantToken);
+    assert.deepEqual(after.participants.map(p => p.id), [other.participantId]);
+    assert.equal(after.tasks[0].status, 'cancelled');
+    assert.equal(after.requests.at(-1)!.status, 'cancelled');
+    assert.equal(after.observations.length, 1);
+    assert.equal(after.events.filter(e => e.kind === 'participant_removed').length, 1);
+    assert.throws(() => x.store.read(x.code, x.person.participantToken), { code: 'UNAUTHORIZED' });
+    assert.throws(() => x.store.removeParticipant(x.code, x.token, 'remove-again', x.person.participantId), { code: 'PARTICIPANT_NOT_FOUND' });
+    assert.throws(() => new SessionStore(x.directory).read(x.code, x.person.participantToken), { code: 'UNAUTHORIZED' });
+  } finally { app.locals.agentRunner.close(); await new Promise<void>((resolve) => server.close(() => resolve())); x.clean(); }
+});
+
+test('removing the last participant discards in-flight work and waits for a new join before replanning', async () => {
+  const x = setup(); let release!: () => void; let calls = 0;
+  const runner = new AgentRunner(x.store, async ({ session }) => {
+    calls++;
+    if (calls === 1) await new Promise<void>((resolve) => { release = resolve; });
+    return { action: 'request', participantId: session.participants[0].id, kind: 'photo', prompt: 'Photo', summary: 'Check' };
+  }, 60_000);
+  try {
+    runner.start(x.code, x.token, 'start-before-kick', x.mission.id, 30);
+    const pending = runner.tick(x.code);
+    x.store.removeParticipant(x.code, x.token, 'kick-last', x.person.participantId);
+    release(); await pending;
+    await runner.tick(x.code); assert.equal(calls, 1);
+    assert.equal(x.store.read(x.code, x.token).requests.length, 0);
+    assert.equal(x.store.read(x.code, x.token).automation?.status, 'waiting');
+    const newcomer = x.store.join(x.code, 'New volunteer', 'Door');
+    await runner.tick(x.code); assert.equal(calls, 2);
+    assert.equal(x.store.read(x.code, x.token).requests[0].participantId, newcomer.participantId);
+  } finally { runner.close(); x.clean(); }
+});

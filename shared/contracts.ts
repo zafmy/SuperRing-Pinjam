@@ -54,7 +54,7 @@ export interface Task {
 
 export interface SessionEvent {
   id: string;
-  kind: 'participant_joined' | 'mission_created' | 'request_created' | 'observation_added' | 'task_updated' | 'agent_error' | 'agent_step' | 'mission_reset' | 'automation_changed';
+  kind: 'participant_joined' | 'participant_removed' | 'mission_created' | 'request_created' | 'observation_added' | 'task_updated' | 'agent_error' | 'agent_step' | 'mission_reset' | 'automation_changed';
   summary: string;
   createdAt: string;
 }

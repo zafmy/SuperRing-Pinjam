@@ -1,3 +1,11 @@
+# Current checkpoint: host participant removal
+
+- Host participant list now offers Keluarkan with inline confirmation. Removal revokes credentials, cancels unfinished work, preserves evidence/history, purges queued push subscriptions and invalidates stale agent decisions. An empty session waits for a new participant.
+- Validation: typecheck, 26 automated tests and production build; physical-phone and visual browser verification remain pending. New tests cover authorization, durable revocation, idempotency, cancelled work, stale agent results, waiting/rejoin and suppressed queued pushes.
+- Invite codes remain usable for joining again with a new identity.
+
+## Previous checkpoint
+
 # Current checkpoint: reset, automatic agent and phone notifications
 
 - Implemented end-to-end in code: host reset with archived records and retained participants; server automatic runner; monitoring/start/stop controls; in-app notices and Web Push enrollment/test/disable.

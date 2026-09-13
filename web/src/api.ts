@@ -63,6 +63,7 @@ export const api = {
   createRequest: (code: string, token: string, idempotencyKey: string, input: CreateRequestInput) => authenticatedJson<GetSessionResponse>(`/sessions/${encodeURIComponent(code)}/requests`, token, idempotencyKey, input),
   uploadMedia: (code: string, token: string, idempotencyKey: string, image: File) => uploadImage(`/sessions/${encodeURIComponent(code)}/media`, token, idempotencyKey, image),
   submitObservation: (code: string, token: string, idempotencyKey: string, input: SubmitObservationInput) => authenticatedJson<GetSessionResponse>(`/sessions/${encodeURIComponent(code)}/observations`, token, idempotencyKey, input),
+  removeParticipant: (code: string, token: string, key: string, participantId: string) => authenticatedJson<GetSessionResponse>(`/sessions/${encodeURIComponent(code)}/participants/${encodeURIComponent(participantId)}/remove`, token, key, {}),
   resetMission: (code: string, token: string, key: string, missionId: string) => authenticatedJson<GetSessionResponse>(`/sessions/${encodeURIComponent(code)}/missions/reset`, token, key, { missionId }),
   startAutomation: (code: string, token: string, key: string, missionId: string, maxSteps: number) => authenticatedJson<GetSessionResponse>(`/sessions/${encodeURIComponent(code)}/agent/start`, token, key, { missionId, maxSteps }),
   stopAgent: (code: string, token: string, key: string, missionId: string) => authenticatedJson<GetSessionResponse>(`/sessions/${encodeURIComponent(code)}/agent/stop`, token, key, { missionId }),

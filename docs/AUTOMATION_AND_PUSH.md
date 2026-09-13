@@ -31,3 +31,7 @@ Selepas restart/redeploy, automasi aktif berhenti dengan mesej pemulihan. Penyel
 23 ujian automatik meliputi kawalan dan protokol menggunakan respons model serta penghantaran push yang disuntik. Sambungan CommandCode sebenar, penghantaran telefon sebenar dan paparan browser masih perlu diuji pada deployment. Reset mengekalkan fail gambar, jadi had storan gambar 50 MiB bagi sesi masih terpakai. Rekod arkib belum mempunyai paparan UI.
 
 Rujukan: [Web Push iOS](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/), [Push subscription](https://developer.mozilla.org/en-US/docs/Web/API/PushManager/subscribe).
+
+## Keluarkan peserta
+
+Pada senarai peserta dalam dashboard penyelaras, tekan **Keluarkan**, kemudian **Ya, keluarkan**. Akses peserta dibatalkan serta-merta; paparan telefon berubah apabila semakan sesi seterusnya berlaku. Tugasan aktif dan permintaan tertunggak dibatalkan. Bukti lama dikekalkan. Agent menyesuaikan rancangan untuk peserta yang tinggal. Pautan jemputan masih boleh digunakan untuk masuk semula dengan identiti baharu.

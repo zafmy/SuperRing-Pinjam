@@ -78,5 +78,8 @@ export function evidenceRoutes(store: SessionStore) {
     const input = z.object({ action: z.enum(['accept', 'decline', 'start', 'report_done']), note: z.string().trim().max(2000).optional() }).parse(request.body);
     response.json(store.respondToTask(request.params.code, bearer(request), idempotencyKey(request), id.parse(request.params.taskId), input));
   });
+  router.post('/:code/participants/:participantId/remove', (request, response) => {
+    response.json(store.removeParticipant(request.params.code, bearer(request), idempotencyKey(request), id.parse(request.params.participantId)));
+  });
   return router;
 }

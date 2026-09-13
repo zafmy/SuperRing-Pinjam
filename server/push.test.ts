@@ -98,3 +98,18 @@ test('push API scopes config, status and test sends to authenticated subscriber'
     assert.equal(notices.length, 0);
   } finally { app.locals.agentRunner.close(); push.close(); await new Promise<void>((resolve) => server.close(() => resolve())); x.clean(); }
 });
+
+
+test('kicking a participant purges subscriptions and suppresses queued notifications', async () => {
+  const x = setup(); let sends = 0;
+  const push = new PushService(x.store, x.directory, undefined, async () => { sends++; });
+  try {
+    push.subscribe(x.code, x.ali.participantToken, x.subscription);
+    x.store.createRequest(x.code, x.hostToken, 'queued-before-kick', { participantId: x.ali.participantId, kind: 'photo', prompt: 'Photo' });
+    x.store.removeParticipant(x.code, x.hostToken, 'kick-subscriber', x.ali.participantId);
+    await push.flush(x.code);
+    assert.equal(sends, 0);
+    assert.ok(!readFileSync(join(x.directory, 'push-subscriptions.json'), 'utf8').includes(x.subscription.endpoint));
+    assert.throws(() => push.subscribe(x.code, x.ali.participantToken, x.subscription), { code: 'UNAUTHORIZED' });
+  } finally { push.close(); x.clean(); }
+});
