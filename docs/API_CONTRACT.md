@@ -1,4 +1,4 @@
-# API contract v0.2
+# API contract v0.3
 
 Source of truth: `shared/contracts.ts`. Base path `/api`, same origin as the web app. All API responses use `Cache-Control: no-store`.
 
@@ -22,7 +22,7 @@ All reads return the same session-wide view to a host or joined participant. Thi
 
 Codes are case-insensitive. Session snapshots include `revision` and timestamps. Start with a foreground-only GET poll every two seconds, cancel on unmount, and show connection errors. SSE/WebSockets are not implemented.
 
-Health explicitly reports `agent: "not_configured"`. Empty arrays mean no real observations or tasks exist, not a fabricated successful run.
+Health reports `agent: "configured"` when the backend has CommandCode configuration, otherwise `"not_configured"`. Configured is not a live provider check. Empty arrays mean no real observations or tasks exist, not a fabricated successful run.
 
 ## Evidence workflow: implemented
 
@@ -45,15 +45,30 @@ Deduplication is scoped to session, caller and operation, and persists across re
 
 The existing create-session and join-session endpoints still do not implement idempotency. Disable repeated clicks and do not automatically retry uncertain create/join POSTs.
 
-## Planned next: do not call these as working endpoints yet
+## Agent and task workflow: implemented
 
-These return 404 in the starter. The backend owner implements them against this plan and updates this document before integration.
-
-| Method / path | Proposed request | Success response | Access / behavior |
+| Method / path | Body | Response | Access |
 |---|---|---|---|
-| POST `/sessions/:code/tasks/:taskId/respond` | RespondToTaskInput | GetSessionResponse | Only the offered/assigned participant |
+| POST `/sessions/:code/agent/step` | Empty body or `{}` | 200 AgentStepResult | Host bearer token + Idempotency-Key |
+| POST `/sessions/:code/tasks/:taskId/respond` | RespondToTaskInput | 200 GetSessionResponse | Assigned participant bearer token + Idempotency-Key |
 
-Future task mutations must implement the same idempotency convention before being marked ready.
+The host creates and confirms the mission FIRST using the existing missions endpoint. At least one participant must have joined before an agent step. One mission per session; the prototype has no mission edit/reset endpoint. `mission.status: active` means the mission was saved, not that a background agent is running.
+
+Each explicit host click runs **one** CommandCode model decision, with a 60-second provider timeout. The frontend must not call this in an effect, polling loop, or automatic retry loop. After a participant responds, show “Langkah agent seterusnya”. This implementation is host-stepped, not a continuously running autonomous worker. A model decision can request a photo/question, offer a task, verify a reported task, complete the mission, or wait. AgentStepResult contains `{ session, action, summary }`; show the factual summary, never a fabricated reasoning trace.
+
+Persist/reuse one idempotency key for the same logical step after an uncertain response. Successful steps are recorded on disk; retrying a successful key returns its action/summary plus the current snapshot without calling the model again. Failed provider calls may be called again and charged again on retry. Concurrent steps in one session return AGENT_BUSY; wait then retry. If the session changes while the model runs, AGENT_STALE discards its decision; a new step must use the latest snapshot. Never replace a newer session revision with an older one.
+
+Participant transitions:
+- offered → accept → accepted
+- offered/accepted/in_progress → decline → declined (optional note explains obstacle)
+- accepted → start → in_progress
+- accepted/in_progress → report_done → needs_verification
+
+Declined tasks cannot be accepted later; the agent must offer another task. Participants cannot mark tasks completed. Agent verification requires a newer photo than the report-done timestamp, actually supplied to the model. Final mission completion requires all tasks resolved, all requirement IDs covered, no pending requests and a final photo newer than the last task state change. Semantic accuracy still depends on the model; receipt time does not prove capture time.
+
+New errors: AGENT_NOT_CONFIGURED (503), MISSION_REQUIRED / PARTICIPANTS_REQUIRED / MISSION_COMPLETED / AGENT_BUSY / AGENT_STALE / INVALID_TASK_TRANSITION (409), AGENT_ACTION_REJECTED (422), AGENT_UNAVAILABLE / AGENT_PROVIDER_ERROR / AGENT_RATE_LIMITED / AGENT_INVALID_OUTPUT (502), TASK_NOT_FOUND (404). Display the error without claiming success. HTTP 502 messages distinguish provider/network failures; provider credentials and raw upstream error bodies are not exposed.
+
+SessionEvent.kind now also permits `agent_step`. Existing fields/endpoints are unchanged; HealthResponse adds `configured`, and AgentStepResult is a new shared type.
 
 Observations keep original text/media references, source participant, zone and receipt timestamp. A receipt timestamp is not proof of when the photo was taken. Missing/unclear visual evidence must remain uncertain.
 
@@ -73,7 +88,7 @@ Use `ApiError` from web/src/api.ts. Do not display successful UI state after a r
 
 ## Frontend previews
 
-Use shared/fixtures.ts in an explicitly labeled development mode. Session, mission and evidence flows can now use real APIs. Tasks and model output remain fixtures until implemented and must never be presented as a real agent run.
+Use shared/fixtures.ts in an explicitly labeled development mode. Session, mission and evidence flows can now use real APIs. Use real agent/task endpoints after deployment; fixtures must never be presented as a real agent run. Live model vision/tool behavior remains to be verified with the account key.
 
 ## Frontend integration note
 

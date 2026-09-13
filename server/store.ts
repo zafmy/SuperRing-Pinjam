@@ -1,7 +1,9 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { CreateMissionInput, CreateRequestInput, Participant, SessionEvent, SessionView, SubmitObservationInput } from '../shared/contracts';
+import type { AgentStepResult, RespondToTaskInput, CreateMissionInput, CreateRequestInput, Participant, SessionEvent, SessionView, SubmitObservationInput } from '../shared/contracts';
+
+import type { AgentDecision } from './agent-decision';
 
 type Principal = { role: 'host' } | { role: 'participant'; participantId: string };
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -21,6 +23,7 @@ interface StoredSession {
   participantTokenHashes: Record<string, string>;
   media: Record<string, MediaRecord>;
   mutations: Record<string, MutationRecord>;
+  agentRuns?: Record<string, { action: AgentStepResult['action']; summary: string }>;
 }
 
 export class StoreError extends Error {
@@ -241,4 +244,87 @@ export class SessionStore {
     });
     return { session: this.read(code, token) };
   }
+
+  agentResult(code: string, token: string, key: string): AgentStepResult | undefined {
+    this.authorize(code, token, 'host');
+    const run = this.lookup(code).agentRuns?.[key];
+    return run ? { session: this.read(code, token), ...run } : undefined;
+  }
+
+  applyAgentDecision(code: string, token: string, key: string, revision: number, decision: AgentDecision, visibleImageIds: string[]): AgentStepResult {
+    this.authorize(code, token, 'host');
+    const previous = this.agentResult(code, token, key);
+    if (previous) return previous;
+    const record = structuredClone(this.lookup(code));
+    const view = record.view;
+    if (view.revision !== revision) throw new StoreError(409, 'AGENT_STALE', 'Sesi berubah semasa agent berfikir. Cuba langkah baharu.');
+    if (!view.mission || view.mission.status === 'completed') throw new StoreError(409, 'MISSION_REQUIRED', 'An unfinished mission is required.');
+    const invalid = (message: string): never => { throw new StoreError(422, 'AGENT_ACTION_REJECTED', message); };
+    const sources = 'sourceObservationIds' in decision ? decision.sourceObservationIds.map((id) => {
+      const source = view.observations.find((item) => item.id === id);
+      if (!source) return invalid('Agent referenced unknown evidence.');
+      return source;
+    }) : [];
+    const freshPhoto = (after: string) => sources.some((item) => item.mediaId && visibleImageIds.includes(item.id) && item.receivedAt > after);
+    const now = new Date().toISOString();
+    if (decision.action === 'request' || decision.action === 'offer_task') {
+      if (!view.participants.some((person) => person.id === decision.participantId)) invalid('Agent selected an unknown participant.');
+    }
+    switch (decision.action) {
+      case 'request':
+        if (view.requests.some((item) => item.participantId === decision.participantId && item.status === 'pending')) invalid('This participant already has a pending request.');
+        view.requests.push({ id: randomUUID(), participantId: decision.participantId, kind: decision.kind, prompt: decision.prompt, status: 'pending', createdAt: now });
+        this.event(record, 'request_created', decision.summary);
+        break;
+      case 'offer_task':
+        if (view.tasks.some((item) => item.participantId === decision.participantId && !['completed', 'declined', 'cancelled'].includes(item.status))) invalid('This participant already has an unfinished task.');
+        view.tasks.push({ id: randomUUID(), participantId: decision.participantId, title: decision.title, status: 'offered', sourceObservationIds: decision.sourceObservationIds, note: '', createdAt: now, updatedAt: now });
+        this.event(record, 'task_updated', decision.summary);
+        break;
+      case 'verify_task': {
+        const task = view.tasks.find((item) => item.id === decision.taskId);
+        if (!task || task.status !== 'needs_verification') invalid('Only reported tasks can be verified.');
+        if (!freshPhoto(task!.updatedAt)) invalid('Task verification needs a newer photo that was provided to the model.');
+        task!.status = 'completed';
+        task!.sourceObservationIds = [...new Set([...task!.sourceObservationIds, ...decision.sourceObservationIds])];
+        task!.updatedAt = now;
+        this.event(record, 'task_updated', decision.summary);
+        break;
+      }
+      case 'complete_mission': {
+        if (view.tasks.some((item) => !['completed', 'declined', 'cancelled'].includes(item.status))) invalid('Unfinished tasks must be resolved first.');
+        const requirements = new Set(decision.requirementIds);
+        if (requirements.size !== view.mission.requirements.length || !view.mission.requirements.every((item) => requirements.has(item.id))) invalid('Every mission requirement must be covered.');
+        // Completion needs a final photo after all task state changes, not an initial inventory photo.
+        const cutoff = view.tasks.reduce((latest, task) => task.updatedAt > latest ? task.updatedAt : latest, view.events.find((event) => event.kind === 'mission_created')?.createdAt ?? view.createdAt);
+        if (!freshPhoto(cutoff)) invalid('Mission completion needs fresh final photo evidence.');
+        if (view.requests.some((item) => item.status === 'pending')) invalid('Resolve pending evidence requests before completing the mission.');
+        view.mission.status = 'completed';
+        break;
+      }
+      case 'wait': break;
+    }
+    this.event(record, 'agent_step', decision.summary);
+    record.agentRuns ??= {};
+    record.agentRuns[key] = { action: decision.action, summary: decision.summary };
+    this.commit(view.code, record);
+    return { session: this.read(code, token), action: decision.action, summary: decision.summary };
+  }
+
+  respondToTask(code: string, token: string, key: string, taskId: string, input: RespondToTaskInput) {
+    this.mutate(code, token, 'participant', 'task-response', key, { taskId, ...input }, (record, principal) => {
+      const task = record.view.tasks.find((item) => item.id === taskId);
+      if (!task) throw new StoreError(404, 'TASK_NOT_FOUND', 'Task not found.');
+      if (principal.role !== 'participant' || task.participantId !== principal.participantId) throw new StoreError(403, 'FORBIDDEN', 'Only the assigned participant can respond.');
+      const allowed = input.action === 'accept' ? ['offered'] : input.action === 'decline' ? ['offered', 'accepted', 'in_progress'] : input.action === 'start' ? ['accepted'] : ['accepted', 'in_progress'];
+      if (!allowed.includes(task.status)) throw new StoreError(409, 'INVALID_TASK_TRANSITION', 'This action is not available for this task state.');
+      task.status = input.action === 'accept' ? 'accepted' : input.action === 'decline' ? 'declined' : input.action === 'start' ? 'in_progress' : 'needs_verification';
+      task.note = input.note ?? '';
+      task.updatedAt = new Date().toISOString();
+      this.event(record, 'task_updated', `Participant response: ${task.status}. ${task.note}`);
+      return task.id;
+    });
+    return { session: this.read(code, token) };
+  }
+
 }

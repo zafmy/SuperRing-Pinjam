@@ -13,7 +13,7 @@ PORT=3001
 DATA_DIR=/app/.data
 ```
 
-The chosen provider for the upcoming agent is CommandCode Provider API, using OpenAI model `gpt-5.5`. Prepare these runtime variables in Dokploy Environment:
+The chosen provider for the agent is CommandCode Provider API, using OpenAI model `gpt-5.5`. Prepare these runtime variables in Dokploy Environment:
 
 ```env
 CMD_API_KEY=your_commandcode_key
@@ -21,7 +21,7 @@ AI_BASE_URL=https://api.commandcode.ai/provider/v1
 AI_MODEL=gpt-5.5
 ```
 
-Replace the placeholder only in Dokploy, never in Git, build arguments or `VITE_*` variables. No direct OpenAI API key is needed. The current evidence server does not consume these variables or call a model; setting them does not activate AI.
+Replace the placeholder only in Dokploy, never in Git, build arguments or `VITE_*` variables. No direct OpenAI API key is needed. The backend now consumes these variables. A configured key enables the host-triggered agent endpoint; the frontend owner must connect the mission form and step button. No model call runs on startup.
 
 The planned client uses `/chat/completions` with Bearer authentication. CommandCode documents text and image inputs; account/model access, image input and tool calls still require a live integration test. Its Go plan does not include Provider API access. See [Provider API](https://commandcode.ai/docs/provider) and [model catalog](https://commandcode.ai/docs/reference/cli/models).
 
@@ -32,7 +32,7 @@ The planned client uses `/chat/completions` with Bearer authentication. CommandC
 
 ## Verify before the demo
 
-- Open `/api/health`: expect `ok: true` and currently `agent: "not_configured"`.
+- Open `/api/health`: expect `ok: true` and `agent: "configured"` when CMD_API_KEY is present, otherwise `"not_configured"`. Configured does not validate the key with CommandCode.
 - Open the root URL on the laptop, create a host session, then open its invite URL on two phones. Confirm both participants appear.
 - Send a photo request, upload a JPEG/PNG/WebP up to 5 MiB, and confirm the host can see it. Test an actual camera image; select a smaller supported image if the phone provides HEIC or a file above the limit.
 - Reload each device: its session should recover without rejoining.

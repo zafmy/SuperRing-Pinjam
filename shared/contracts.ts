@@ -54,7 +54,7 @@ export interface Task {
 
 export interface SessionEvent {
   id: string;
-  kind: 'participant_joined' | 'mission_created' | 'request_created' | 'observation_added' | 'task_updated' | 'agent_error';
+  kind: 'participant_joined' | 'mission_created' | 'request_created' | 'observation_added' | 'task_updated' | 'agent_error' | 'agent_step';
   summary: string;
   createdAt: string;
 }
@@ -75,7 +75,7 @@ export interface SessionView {
 }
 
 export interface ApiErrorBody { error: { code: string; message: string } }
-export interface HealthResponse { ok: true; service: 'pinjam'; agent: 'not_configured' }
+export interface HealthResponse { ok: true; service: 'pinjam'; agent: 'not_configured' | 'configured' }
 export interface CreateSessionInput { title?: string }
 export interface CreateSessionResponse { session: SessionView; hostToken: string }
 export interface JoinSessionInput { name: string; zone: string }
@@ -89,4 +89,11 @@ export interface SubmitObservationInput { requestId: string; text: string; media
 export interface RespondToTaskInput {
   action: 'accept' | 'decline' | 'start' | 'report_done';
   note?: string;
+}
+
+/** One host-triggered model step; configured does not mean a live provider check passed. */
+export interface AgentStepResult {
+  session: SessionView;
+  action: 'request' | 'offer_task' | 'verify_task' | 'complete_mission' | 'wait';
+  summary: string;
 }
