@@ -1,7 +1,7 @@
 import type {
-  ApiErrorBody, CreateRequestInput, CreateSessionInput, CreateSessionResponse,
-  GetSessionResponse, HealthResponse, JoinSessionInput, JoinSessionResponse,
-  SubmitObservationInput,
+  AgentStepResult, ApiErrorBody, CreateMissionInput, CreateRequestInput,
+  CreateSessionInput, CreateSessionResponse, GetSessionResponse, HealthResponse,
+  JoinSessionInput, JoinSessionResponse, RespondToTaskInput, SubmitObservationInput,
 } from '../../shared/contracts';
 
 export class ApiError extends Error {
@@ -59,8 +59,11 @@ export const api = {
   createSession: (input: CreateSessionInput = {}) => request<CreateSessionResponse>('/sessions', { method: 'POST', body: JSON.stringify(input) }),
   joinSession: (code: string, input: JoinSessionInput) => request<JoinSessionResponse>(`/sessions/${encodeURIComponent(code)}/join`, { method: 'POST', body: JSON.stringify(input) }),
   getSession: (code: string, token: string, signal?: AbortSignal) => request<GetSessionResponse>(`/sessions/${encodeURIComponent(code)}`, { headers: { Authorization: `Bearer ${token}` }, signal }),
+  createMission: (code: string, token: string, idempotencyKey: string, input: CreateMissionInput) => authenticatedJson<GetSessionResponse>(`/sessions/${encodeURIComponent(code)}/missions`, token, idempotencyKey, input),
   createRequest: (code: string, token: string, idempotencyKey: string, input: CreateRequestInput) => authenticatedJson<GetSessionResponse>(`/sessions/${encodeURIComponent(code)}/requests`, token, idempotencyKey, input),
   uploadMedia: (code: string, token: string, idempotencyKey: string, image: File) => uploadImage(`/sessions/${encodeURIComponent(code)}/media`, token, idempotencyKey, image),
   submitObservation: (code: string, token: string, idempotencyKey: string, input: SubmitObservationInput) => authenticatedJson<GetSessionResponse>(`/sessions/${encodeURIComponent(code)}/observations`, token, idempotencyKey, input),
+  stepAgent: (code: string, token: string, idempotencyKey: string) => authenticatedJson<AgentStepResult>(`/sessions/${encodeURIComponent(code)}/agent/step`, token, idempotencyKey, {}),
+  respondToTask: (code: string, token: string, taskId: string, idempotencyKey: string, input: RespondToTaskInput) => authenticatedJson<GetSessionResponse>(`/sessions/${encodeURIComponent(code)}/tasks/${encodeURIComponent(taskId)}/respond`, token, idempotencyKey, input),
   getMedia: (code: string, token: string, mediaId: string, signal?: AbortSignal) => getImage(`/sessions/${encodeURIComponent(code)}/media/${encodeURIComponent(mediaId)}`, token, signal),
 };
