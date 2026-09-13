@@ -1,6 +1,6 @@
 # PINJAM — Pelan bina untuk dua orang
 
-Status: Starter bersama tersedia. Create/join/read sesi sudah dibina dan diuji melalui API. Paparan pengguna, gambar, tugasan dan agent belum dibina. Rujuk STATUS.md untuk kemajuan semasa.
+Status: Backend sesi, misi, permintaan gambar/soalan, muat naik gambar dan jawapan peserta sudah dibina serta diuji melalui API. Integrasi paparan telefon, tugasan dan agent masih belum siap. Rujuk STATUS.md untuk kemajuan semasa.
 
 Repository pasukan: https://github.com/zafmy/SuperRing-Pinjam
 

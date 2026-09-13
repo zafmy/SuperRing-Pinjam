@@ -15,7 +15,7 @@ This is a two-person hackathon project. Read README.md, docs/TEAM_WORKFLOW.md an
 - Use `shared/contracts.ts`; do not invent conflicting copies of types or endpoint paths.
 - Frontend can use `shared/fixtures.ts` for explicit development previews. Never present fixtures as real observations or agent runs.
 - Keep provider credentials and session tokens out of the browser bundle, logs and git. Participant/host session tokens are returned to their holder only and must not appear in QR URLs or public session snapshots.
-- The starter implements session create, join and read only. Photos, tasks and AI behavior are future work, not implemented capabilities.
+- Session create/join/read, host-confirmed missions, observation requests, image upload/retrieval and participant responses are implemented. Tasks and AI behavior remain future work. Read docs/STATUS.md for the latest verified checkpoint.
 - Use one backend for a multi-phone demo. Current JSON storage assumes a single Node process and a persistent data directory.
 - Keep the product scoped to one workshop-table setup mission with two locations and two participants.
 - Explain uncertainty in images and allow clarification. Do not infer that an unseen item is definitely absent or let a participant mark a mission verified.
