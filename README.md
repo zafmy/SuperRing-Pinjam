@@ -31,7 +31,7 @@ npm run build
 npm start
 ```
 
-The production build serves both the browser app and API on port 3001 (or `PORT`). Hosting needs one persistent Node process and persistent storage for `DATA_DIR`; this starter's JSON store is not suitable for multi-instance/serverless deployment. A public HTTPS deployment or appropriately configured tunnel is needed for a remote phone demo. Deployment is not yet configured.
+The production build serves both the browser app and API on port 3001 (or `PORT`). Hosting needs one persistent Node process and persistent storage for `DATA_DIR`; this starter's JSON store is not suitable for multi-instance/serverless deployment. A public HTTPS deployment or appropriately configured tunnel is needed for a remote phone demo. A Dockerfile and [Dokploy setup guide](docs/DOKPLOY.md) are included; a live deployment still needs verification.
 
 For local network testing, open the laptop's LAN address on port 5173 from both phones while `npm run dev` is running, subject to Wi-Fi isolation/firewall rules. Both must use the same backend and session. Test camera/upload behavior on the actual phones before relying on it.
 

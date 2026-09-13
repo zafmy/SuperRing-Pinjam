@@ -17,3 +17,19 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t pinjam-check .
+      - name: Check runtime and volume permissions
+        run: |
+          docker run -d --name pinjam-check -p 3001:3001 -v pinjam-check-data:/app/.data pinjam-check
+          trap 'docker logs pinjam-check; docker rm -f pinjam-check' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:3001/api/health; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://localhost:3001/ > /dev/null
+          curl --fail --silent -H 'Content-Type: application/json' -d '{"title":"Container smoke test"}' http://localhost:3001/api/sessions > /tmp/pinjam-session.json
+          docker exec pinjam-check node -e "const fs = require('fs'); if (!fs.readdirSync('/app/.data').length) process.exit(1)"
