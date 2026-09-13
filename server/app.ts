@@ -1,7 +1,9 @@
 import express, { type ErrorRequestHandler } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
 import type { HealthResponse } from '../shared/contracts';
 import { SessionStore, StoreError } from './store';
+import { bearer, evidenceRoutes } from './evidence';
 
 const createInput = z.object({ title: z.string().trim().min(1).max(120).default('Meja workshop') });
 const joinInput = z.object({ name: z.string().trim().min(1).max(60), zone: z.string().trim().min(1).max(80) });
@@ -28,12 +30,9 @@ export function createApp(store: SessionStore) {
     response.status(201).json(store.join(request.params.code, input.name, input.zone));
   });
   app.get('/api/sessions/:code', (request, response) => {
-    const authorization = request.headers.authorization;
-    if (!authorization?.startsWith('Bearer ') || authorization.length < 8) {
-      throw new StoreError(401, 'UNAUTHORIZED', 'A valid session token is required.');
-    }
-    response.json({ session: store.read(request.params.code, authorization.slice(7)) });
+    response.json({ session: store.read(request.params.code, bearer(request)) });
   });
+  app.use('/api/sessions', evidenceRoutes(store));
   app.use('/api', (_request, response) => {
     response.status(404).json({ error: { code: 'NOT_FOUND', message: 'This API route is not implemented.' } });
   });
@@ -43,6 +42,12 @@ export function createApp(store: SessionStore) {
       response.status(400).json({ error: { code: 'INVALID_INPUT', message: error.issues[0]?.message ?? 'Invalid input.' } });
     } else if (error instanceof StoreError) {
       response.status(error.status).json({ error: { code: error.code, message: error.message } });
+    } else if (error instanceof multer.MulterError) {
+      const tooLarge = error.code === 'LIMIT_FILE_SIZE';
+      response.status(tooLarge ? 413 : 400).json({ error: {
+        code: tooLarge ? 'PAYLOAD_TOO_LARGE' : 'INVALID_UPLOAD',
+        message: tooLarge ? 'Image must be no larger than 5 MiB.' : 'Upload exactly one image file in the image field, without extra fields.',
+      } });
     } else if (error?.type === 'entity.parse.failed') {
       response.status(400).json({ error: { code: 'INVALID_JSON', message: 'Send a valid JSON body.' } });
     } else if (error?.type === 'entity.too.large') {

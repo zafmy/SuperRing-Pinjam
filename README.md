@@ -6,9 +6,9 @@ Our first mission: prepare a workshop table for three participants, with a noteb
 
 ## Current status
 
-**Shared starter, not the completed agent.** The server can create a session, accept participants and return an authenticated shared snapshot. Data survives a server restart on the same disk. The browser currently contains a connection check for frontend handoff.
+**Working evidence backend, not the completed agent.** The server can create sessions, accept participants, record a mission, request observations, receive images/text from the requested participant, and share evidence within the session. Data and images survive a server restart on the same disk. Retried evidence submissions are deduplicated. The browser currently contains a connection check for frontend handoff.
 
-QR screens, photo upload, task actions, AI planning and visual verification are not built yet. See [STATUS](docs/STATUS.md) for the current checkpoint.
+QR/screens, task actions, AI planning and visual verification are not built yet. Photo upload is implemented at the API level; phone UI integration remains to be tested. Requests are currently issued by the host, not an autonomous model. See [STATUS](docs/STATUS.md) for the current checkpoint.
 
 ## Run locally
 
