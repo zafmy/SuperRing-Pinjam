@@ -1,3 +1,15 @@
+# Current checkpoint: mission and CommandCode agent API
+
+- Implemented: host-confirmed mission API; CommandCode Chat Completions adapter using gpt-5.5 by default; one explicit host-triggered step with text/images and one validated tool call.
+- Actions: photo/question request, voluntary task offer, task verification, mission completion, wait. Participant actions: accept, decline, start, report_done. A reported task is not completed until the agent verifies fresh photo evidence.
+- Controls: host authorization; configured provider required; mission and participant prerequisites; one in-flight step per session; stale snapshot rejection; persisted successful-step retry keys; no raw provider errors or credentials exposed.
+- Validation: local typecheck, 15 automated tests and production build passed. New tests use injected model/HTTP responses. They cover host-only steps, mission requirement, durable retries, stale/concurrent steps, consent/refusal, fresh evidence gates, provider request shape and sanitized errors.
+- Not yet verified: real CommandCode key/model/vision/tool calls, deployed agent endpoint, physical-phone complete mission flow. No live model success is claimed.
+- Frontend next: implement docs/MISSION_AGENT_HANDOFF.md on feat/frontend. Existing session/evidence UI is preserved. The mission form, host agent button and participant task controls are not in the UI yet.
+- Execution model: one host click = one model decision. There is no automatic background worker; health configured only indicates local configuration.
+
+## Earlier checkpoints (historical)
+
 # Status and handoff
 
 ## Backend evidence workflow

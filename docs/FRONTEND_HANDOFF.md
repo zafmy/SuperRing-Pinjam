@@ -1,3 +1,9 @@
+# Frontend handoff — checkpoint semasa
+
+Create/join dan evidence UI sudah digabungkan. Tugasan seterusnya ialah borang misi, kawalan agent dan respons tugasan peserta.
+
+**Ikut [MISSION_AGENT_HANDOFF.md](MISSION_AGENT_HANDOFF.md) dan API_CONTRACT.md v0.3.** Arahan starter di bawah ialah sejarah; jangan bina semula aliran yang sudah siap.
+
 # Frontend handoff — untuk kawan
 
 Owner: frontend teammate. Branch: `feat/frontend`. Ruang kerja: `web/**`.

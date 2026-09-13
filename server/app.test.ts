@@ -58,7 +58,7 @@ test('invalid input, missing sessions and unimplemented routes fail explicitly',
   assert.equal(invalid.status, 400);
   assert.equal((await invalid.json()).error.code, 'INVALID_INPUT');
   assert.equal((await post('/sessions/DOESNOTEXIST/join', { name: 'Ali', zone: 'Bekalan' })).status, 404);
-  const planned = await post(`/sessions/${created.session.code}/tasks/unused/respond`, {});
+  const planned = await post(`/sessions/${created.session.code}/not-implemented`, {});
   assert.equal(planned.status, 404);
   const health = await (await fetch(`${base}/health`)).json();
   assert.equal(health.agent, 'not_configured');

@@ -6,9 +6,9 @@ Our first mission: prepare a workshop table for three participants, with a noteb
 
 ## Current status
 
-**Working evidence backend, not the completed agent.** The server can create sessions, accept participants, record a mission, request observations, receive images/text from the requested participant, and share evidence within the session. Data and images survive a server restart on the same disk. Retried evidence submissions are deduplicated. The browser supports host creation, participant joining, photo/question requests and shared evidence.
+**Mission, evidence and agent APIs are implemented; frontend agent controls are the next teammate task.** The host can save mission requirements through the API and explicitly trigger one CommandCode step. The model can request observations, offer voluntary tasks, verify fresh evidence and complete the mission under server-enforced checks. Participants can accept, decline and report done through the task API.
 
-QR generation, task actions, AI planning and visual verification are not built yet. Photo upload is connected in the browser; physical-phone integration remains to be tested. Requests are currently issued by the host, not an autonomous model. See [STATUS](docs/STATUS.md) for the current checkpoint.
+The existing browser supports sessions and evidence. The frontend owner must add the mission form, agent step button and participant task controls using [the new handoff](docs/MISSION_AGENT_HANDOFF.md). No automatic background worker is running. Real CommandCode calls, vision quality and the two-phone end-to-end flow still require verification; automated tests use injected model responses.
 
 ## Run locally
 
@@ -23,7 +23,7 @@ npm run dev
 
 Open http://localhost:5173. The web server forwards `/api` to the backend on port 3001. No model key is required for the starter.
 
-Optional configuration: copy `.env.example` to `.env`. For normal development keep `PORT=3001`, matching the Vite proxy. The upcoming agent will use CommandCode Provider API with OpenAI model `gpt-5.5`. `.env.example` includes the planned CMD_API_KEY, AI_BASE_URL and AI_MODEL settings; the current server does not consume them yet. Configure the real key only on the backend; never put keys in `VITE_*` variables.
+Optional configuration: copy `.env.example` to `.env`. For normal development keep `PORT=3001`, matching the Vite proxy. The agent uses CommandCode Provider API with OpenAI model `gpt-5.5`. `.env.example` includes CMD_API_KEY, AI_BASE_URL and AI_MODEL settings consumed by the backend. Configure the real key only on the backend; never put keys in `VITE_*` variables.
 
 ```sh
 npm run check

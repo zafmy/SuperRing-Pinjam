@@ -21,7 +21,7 @@ export function bearer(request: Request) {
   return value.slice(7);
 }
 
-function idempotencyKey(request: Request) {
+export function idempotencyKey(request: Request) {
   const key = request.get('Idempotency-Key');
   if (!key || !/^[A-Za-z0-9._:-]{8,128}$/.test(key)) {
     throw new StoreError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'Send an Idempotency-Key of 8–128 letters, numbers, dots, colons, underscores or hyphens.');
@@ -73,6 +73,10 @@ export function evidenceRoutes(store: SessionStore) {
     const token = bearer(request);
     store.authorize(request.params.code, token, 'participant');
     response.status(201).json(store.submitObservation(request.params.code, token, idempotencyKey(request), observationInput.parse(request.body)));
+  });
+  router.post('/:code/tasks/:taskId/respond', (request, response) => {
+    const input = z.object({ action: z.enum(['accept', 'decline', 'start', 'report_done']), note: z.string().trim().max(2000).optional() }).parse(request.body);
+    response.json(store.respondToTask(request.params.code, bearer(request), idempotencyKey(request), id.parse(request.params.taskId), input));
   });
   return router;
 }

@@ -4,11 +4,12 @@ import multer from 'multer';
 import type { HealthResponse } from '../shared/contracts';
 import { SessionStore, StoreError } from './store';
 import { bearer, evidenceRoutes } from './evidence';
+import { agentRoutes, type Planner } from './agent';
 
 const createInput = z.object({ title: z.string().trim().min(1).max(120).default('Meja workshop') });
 const joinInput = z.object({ name: z.string().trim().min(1).max(60), zone: z.string().trim().min(1).max(80) });
 
-export function createApp(store: SessionStore) {
+export function createApp(store: SessionStore, planner?: Planner) {
   const app = express();
   app.disable('x-powered-by');
   app.use('/api', (_request, response, next) => {
@@ -18,7 +19,7 @@ export function createApp(store: SessionStore) {
   app.use(express.json({ limit: '100kb' }));
 
   app.get('/api/health', (_request, response) => {
-    const body: HealthResponse = { ok: true, service: 'pinjam', agent: 'not_configured' };
+    const body: HealthResponse = { ok: true, service: 'pinjam', agent: planner ? 'configured' : 'not_configured' };
     response.json(body);
   });
   app.post('/api/sessions', (request, response) => {
@@ -33,6 +34,7 @@ export function createApp(store: SessionStore) {
     response.json({ session: store.read(request.params.code, bearer(request)) });
   });
   app.use('/api/sessions', evidenceRoutes(store));
+  app.use('/api/sessions', agentRoutes(store, planner));
   app.use('/api', (_request, response) => {
     response.status(404).json({ error: { code: 'NOT_FOUND', message: 'This API route is not implemented.' } });
   });
