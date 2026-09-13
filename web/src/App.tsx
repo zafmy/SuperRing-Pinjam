@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   Observation, ObservationRequest, Participant, Requirement, RespondToTaskInput,
   SessionEvent, SessionView, Task,
@@ -156,7 +156,7 @@ function Activity({ events }: { events: SessionEvent[] }) {
 
   return (
     <ol className="activity-list">
-      {events.slice(0, 5).map((event) => (
+      {events.slice(-5).reverse().map((event) => (
         <li key={event.id}>
           <span>{event.summary}</span>
           <time dateTime={event.createdAt}>{relativeTime(event.createdAt)}</time>
@@ -500,7 +500,7 @@ function SessionDashboard({
                 <p className="empty-state">Penyelaras belum menetapkan misi untuk ruang ini.</p>
               </>
             )}
-            <p className="fine-print">Bukti yang diterima belum disemak AI dan tidak mengesahkan kerja telah selesai.</p>
+            <p className="fine-print">Penerimaan bukti sahaja tidak mengesahkan kerja selesai. Rujuk status misi dan keputusan agent.</p>
           </section>
         )}
 
@@ -656,7 +656,9 @@ function AgentControls({
   const [healthError, setHealthError] = useState('');
   const [stepping, setStepping] = useState(false);
   const [stepError, setStepError] = useState('');
-  const [summary, setSummary] = useState('');
+  const pendingKey = useRef<string | null>(readPendingAgentStep(code));
+  const latestStep = [...events].reverse().find((event) => event.kind === 'agent_step');
+  const summary = latestStep?.summary ?? '';
   const hasStepped = events.some((event) => event.kind === 'agent_step');
   const missionComplete = missionStatus === 'completed';
 
@@ -674,18 +676,21 @@ function AgentControls({
   }, []);
 
   const step = async () => {
-    const key = readPendingAgentStep(code) ?? newIdempotencyKey();
+    if (stepping) return;
+    const key = pendingKey.current ?? readPendingAgentStep(code) ?? newIdempotencyKey();
+    pendingKey.current = key;
     savePendingAgentStep(code, key);
     setStepping(true);
     setStepError('');
     try {
       const result = await api.stepAgent(code, token, key);
       clearPendingAgentStep(code);
+      pendingKey.current = null;
       onSession(result.session);
-      setSummary(result.summary);
     } catch (agentError: unknown) {
       if (agentError instanceof ApiError && agentError.code === 'AGENT_STALE') {
         clearPendingAgentStep(code);
+        pendingKey.current = null;
         try {
           const current = await api.getSession(code, token);
           onSession(current.session);
@@ -700,7 +705,9 @@ function AgentControls({
   };
 
   const disabled = stepping || health !== 'configured' || !hasParticipant || missionComplete;
-  let stateMessage = 'Agent belum dimulakan. Misi yang aktif tidak bermaksud agent berjalan sendiri.';
+  let stateMessage = hasStepped
+    ? 'Langkah terakhir selesai. Semak respons peserta, kemudian cetus langkah seterusnya apabila bersedia.'
+    : 'Agent belum dimulakan. Misi yang aktif tidak bermaksud agent berjalan sendiri.';
   if (health === 'checking') stateMessage = 'Menyemak konfigurasi AI pada pelayan…';
   if (health === 'not_configured') stateMessage = 'Sambungan AI belum dikonfigurasi pada pelayan.';
   if (health === 'error') stateMessage = `Tidak dapat menyemak sambungan AI: ${healthError}`;
@@ -1061,7 +1068,7 @@ function EvidenceList({
                 </div>
                 {observation.text && <p>{observation.text}</p>}
                 {observation.mediaId && <EvidenceImage code={code} mediaId={observation.mediaId} token={token} participantName={participant?.name ?? 'peserta'} />}
-                <p className="fine-print">Bukti diterima oleh sesi; ia belum disahkan secara visual atau menandakan misi selesai.</p>
+                <p className="fine-print">Bukti diterima oleh sesi. Rujuk keputusan agent untuk semakan; penerimaan gambar sahaja bukan pengesahan siap.</p>
               </article>
             );
           })}
