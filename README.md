@@ -66,3 +66,7 @@ docs/                 Plan, ownership, contract and status
 ```
 
 The app intentionally has no generated photos or simulated successful agent runs. Build and test the core functionality during the official event; describe its actual limits in the submission.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
